@@ -1,0 +1,310 @@
+{% macro report_note(tag, title, body, tone='neutral') -%}
+{% set tones = {
+  'neutral': {
+    'tag_bg': '#F1F5F9', 'tag_text': '#334155', 'head_bg': '#F8FAFC', 'border': '#E2E8F0', 'body_bg': '#FFFFFF', 'accent': '#64748B'
+  },
+  'accent': {
+    'tag_bg': '#E0F2FE', 'tag_text': '#075985', 'head_bg': '#F8FAFC', 'border': '#BAE6FD', 'body_bg': '#F8FCFF', 'accent': '#0284C7'
+  },
+  'warning': {
+    'tag_bg': '#FFF7ED', 'tag_text': '#C2410C', 'head_bg': '#FFFBF5', 'border': '#FED7AA', 'body_bg': '#FFFFFF', 'accent': '#EA580C'
+  }
+} %}
+{% set palette = tones[tone] %}
+<div class="report-note" style="margin:10px 0 12px 0;border:1px solid {{ palette.border }};border-left:4px solid {{ palette.accent }};border-radius:8px;overflow:hidden;background:{{ palette.body_bg }};box-shadow:0 1px 2px rgba(15,23,42,0.04);">
+<div style="padding:10px 14px;background:{{ palette.head_bg }};border-bottom:1px solid {{ palette.border }};">
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;background:{{ palette.tag_bg }};color:{{ palette.tag_text }};font-size:10px;font-weight:700;letter-spacing:0;">{{ tag }}</span>
+<span style="font-size:12px;font-weight:600;color:#334155;">{{ title }}</span>
+</div>
+</div>
+<div style="padding:12px 14px;font-size:13px;color:#1F2937;line-height:1.75;">{{ body | rich_text | safe }}</div>
+</div>
+{%- endmacro %}
+
+{% macro summary_card(label, value, caption='', tone='neutral') -%}
+{% set tones = {
+  'green': {'border': '#BBF7D0', 'bg': '#F0FDF4', 'label': '#166534'},
+  'yellow': {'border': '#FDE68A', 'bg': '#FFFBEB', 'label': '#92400E'},
+  'red': {'border': '#FECACA', 'bg': '#FEF2F2', 'label': '#991B1B'},
+  'blue': {'border': '#BAE6FD', 'bg': '#F0F9FF', 'label': '#075985'},
+  'neutral': {'border': '#E2E8F0', 'bg': '#F8FAFC', 'label': '#475569'}
+} %}
+{% set palette = tones[tone] if tone in tones else tones['neutral'] %}
+<div class="summary-card" style="min-height:86px;border:1px solid {{ palette.border }};border-radius:8px;background:{{ palette.bg }};padding:12px 14px;display:flex;flex-direction:column;justify-content:space-between;gap:8px;">
+<div style="font-size:11px;font-weight:700;color:{{ palette.label }};letter-spacing:0;">{{ label }}</div>
+<div style="font-size:18px;font-weight:800;color:#111827;line-height:1.25;">{{ value | safe }}</div>
+{% if caption %}<div style="font-size:11px;color:#64748B;line-height:1.45;">{{ caption | safe }}</div>{% endif %}
+</div>
+{%- endmacro %}
+
+{% set cover_status = inventory_overview.status if inventory_overview.status else '待识别' %}
+{% set cover_status_tone = 'green' if cover_status == '绿灯' else 'yellow' if cover_status == '黄灯' else 'red' if cover_status == '红灯' else 'neutral' %}
+{% set status_badge_bg = '#DCFCE7' if cover_status == '绿灯' else '#FEF3C7' if cover_status == '黄灯' else '#FEE2E2' if cover_status == '红灯' else '#F1F5F9' %}
+{% set status_badge_text = '#166534' if cover_status == '绿灯' else '#92400E' if cover_status == '黄灯' else '#991B1B' if cover_status == '红灯' else '#475569' %}
+
+<section class="report-cover" style="margin:0 0 16px 0;border:1px solid #DDE5EE;border-radius:8px;overflow:hidden;background:#FFFFFF;box-shadow:0 3px 10px rgba(15,23,42,0.07);">
+<div style="height:6px;background:linear-gradient(90deg,#0F766E 0%,#0284C7 44%,#F59E0B 100%);"></div>
+<div style="padding:20px 22px 18px 22px;background:linear-gradient(180deg,#FFFFFF 0%,#F8FAFC 100%);">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
+<span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:#ECFDF5;color:#047857;font-size:11px;font-weight:800;letter-spacing:0;">月度经营分析</span>
+<span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:{{ status_badge_bg }};color:{{ status_badge_text }};font-size:11px;font-weight:800;letter-spacing:0;">库存{{ cover_status }}</span>
+</div>
+<h1 style="font-size:24px;line-height:1.25;color:#0F172A;margin:0 0 12px 0;font-weight:800;border:0;padding:0;">{{ title }}</h1>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;">
+<div style="border:1px solid #E2E8F0;border-radius:8px;background:#FFFFFF;padding:8px 10px;"><div style="font-size:10px;font-weight:700;color:#64748B;">统计周期</div><div style="font-size:13px;font-weight:700;color:#111827;margin-top:2px;">{{ report_month_label }}</div></div>
+<div style="border:1px solid #E2E8F0;border-radius:8px;background:#FFFFFF;padding:8px 10px;"><div style="font-size:10px;font-weight:700;color:#64748B;">生成时间</div><div style="font-size:13px;font-weight:700;color:#111827;margin-top:2px;">{{ generated_at }}</div></div>
+<div style="border:1px solid #E2E8F0;border-radius:8px;background:#FFFFFF;padding:8px 10px;"><div style="font-size:10px;font-weight:700;color:#64748B;">管理目标</div><div style="font-size:13px;font-weight:700;color:#111827;margin-top:2px;">库销比 <= 2.0</div></div>
+</div>
+</div>
+</section>
+
+<section class="executive-summary" style="margin:0 0 18px 0;">
+<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:10px;">
+{{ summary_card('本月整体库销比', core_summary.ratio_text, '目标值 2.0', cover_status_tone) }}
+{{ summary_card('大区状态', regional_status.red_count ~ '红 / ' ~ regional_status.yellow_count ~ '黄 / ' ~ regional_status.green_count ~ '绿', '按期末库销比灯号统计', 'blue') }}
+{{ summary_card('补货缺口', (purchase_analysis.future_demand_gaps | length) ~ '个', '地区型号未来30天缺口', 'neutral') }}
+{{ summary_card('行动优先级', (ai_actions_p1 | length) ~ '个P1 / ' ~ (ai_actions_p2 | length) ~ '个P2', '进入本月复盘清单', 'yellow' if ai_actions_p1 else 'neutral') }}
+</div>
+<div class="summary-narrative" style="border:1px solid #E2E8F0;border-radius:8px;background:#FFFFFF;overflow:hidden;">
+<div style="padding:10px 14px;border-bottom:1px solid #E2E8F0;background:#F8FAFC;font-size:12px;font-weight:800;color:#0F172A;">经营摘要</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:0;">
+<div style="padding:12px 14px;border-right:1px solid #E2E8F0;border-bottom:1px solid #E2E8F0;"><div style="font-size:11px;font-weight:800;color:#475569;margin-bottom:5px;">趋势判断</div><div style="font-size:13px;color:#1F2937;line-height:1.75;">{{ core_summary.trend_text | safe }}</div></div>
+<div style="padding:12px 14px;border-bottom:1px solid #E2E8F0;"><div style="font-size:11px;font-weight:800;color:#475569;margin-bottom:5px;">核心问题</div><div style="font-size:13px;color:#1F2937;line-height:1.75;">{{ core_summary.problem_text }}</div></div>
+<div style="padding:12px 14px;border-right:1px solid #E2E8F0;"><div style="font-size:11px;font-weight:800;color:#475569;margin-bottom:5px;">管理动作</div><div style="font-size:13px;color:#1F2937;line-height:1.75;">{{ core_summary.action_text }}</div></div>
+<div style="padding:12px 14px;"><div style="font-size:11px;font-weight:800;color:#475569;margin-bottom:5px;">阅读顺序</div><div style="font-size:13px;color:#1F2937;line-height:1.75;">先看大区库销灯号，再看历史订购、型号结构、配比盘点，最后落到P1/P2行动清单。</div></div>
+</div>
+</div>
+</section>
+
+## 一、核心结论（月度核心汇总）
+
+{{ report_note("摘要", "本月核心结论", "本月整体库销比：" ~ core_summary.ratio_text ~ "，库销比目标值：<strong>2.0</strong><br>趋势判断：" ~ core_summary.trend_text ~ "<br>核心问题：" ~ core_summary.problem_text ~ "<br>管理动作：" ~ core_summary.action_text, "accent") }}
+
+---
+
+## 二、库销比总览（大区核心数据）
+
+### {{ report_month_label }}纸袋库销比历史变化趋势
+
+{% if charts.inventory_trend_labeled %}
+**图表1-1：纸袋库销比历史变化趋势**
+{{ charts.inventory_trend_labeled }}
+{% endif %}
+
+### 大区数据达成情况表
+
+{{ report_note("管理结论", "地区目标达成判断", regional_management_conclusion, "accent") }}
+
+{{ regional_status_table_html }}
+
+---
+
+## 三、历史订购评价（风险分级判定）
+
+### 风险等级判定规则（精细化版）
+
+- 数据口径：以 a597 分型号大区库销/进销数据与 u114 未来30天预测表按“大区+型号”拼接；优先展示库存大于1万、当期库销高于绿灯线或次月预测仍偏高、且近30天厂入量大于0的组合。
+- P1 高风险：当前库销处于高位且进销比大于等于2，说明新增入库仍快于消化节奏，判断为高库销&高进销、月度多订风险。
+- P2 中风险：当前库销处于高位或次月预测库存偏高，且进销比小于等于1，说明历史积压尚未消化但仍有厂入，判断为高库销&低进销、持续积压风险。
+- P3 关注风险：本期有厂入且期末进入黄灯，但严重度低于P1/P2，作为下月消化节奏跟踪项。
+- 表内“期初库销估算值”：采用当期期末库销比 - 当期进销比估算，用于辅助判断订购前库存压力；“次月期末库销测算”来自 u114 预测表。
+
+### 高/中风险项明细
+
+{{ report_note("管理结论", "历史订购判断", purchase_management_conclusion if purchase_alerts else purchase_analysis.summary_sentence, "accent") }}
+
+{% if purchase_priority_risk_summary_table_html %}
+**图表1-2：历史订购评价明细**
+{{ purchase_priority_risk_summary_table_html }}
+{% endif %}
+{% if purchase_report_empty_message %}
+{{ report_note("提示", "历史订购评价说明", purchase_report_empty_message, "warning") }}
+{% endif %}
+
+{{ report_note("说明", "次月期末库销测算取值逻辑", purchase_future_ratio_explainer) }}
+
+---
+
+## 四、库存结构与型号错配（重点关注）
+
+### 核心结构问题明细
+
+{{ report_note("管理结论", "规格配置判断", model_management_conclusion, "accent") }}
+
+- **判定核心依据**：以各大区单型号的库存占比与对应型号的使用占比为核心对比指标，识别结构是否偏离真实需求，并用占比差异百分点量化错配程度。
+- **具体判定规则**：
+1. 集中待跟踪：库存明显集中在单一型号，但库存主力与使用主力一致，重点看两端占比差异是否继续扩大。
+2. 结构错配：库存主力与使用主力不一致，或主力型号对应占比差异达到15个百分点及以上。
+
+|**大区**|**库存主力型号（占比）**|**使用主力型号（占比）**|**问题评价**|**优化建议**|
+|---|---|---|---|---|
+{% for row in model_inventory_problem_analysis %}
+| {{ row.region }} | {{ row.top_model if row.top_model else '待补充' }}{% if row.top_share is not none %}（<strong style="color:#111827;">{{ '%.1f%%'|format(row.top_share * 100) }}</strong>）{% endif %} | {{ row.usage_top_model if row.usage_top_model else '待补充' }}{% if row.usage_top_share is not none %}（<strong style="color:#111827;">{{ '%.1f%%'|format(row.usage_top_share * 100) }}</strong>）{% endif %} | {{ row.structure_label_display if row.structure_label_display else row.structure_label if row.structure_label else '待补充' }} | {{ row.suggestion if row.suggestion else '待补充' }} |
+{% endfor %}
+{% if not model_inventory_problem_analysis %}
+| 本期无须展开区域 | - | - | 未识别明显结构错配 | 持续跟踪单一型号集中趋势 |
+{% endif %}
+
+---
+
+## 五、使用配比与盘点异常（合规管控）
+
+### 纸袋使用配比概况
+
+{{ report_note("管理结论", "使用配比判断", consumption_management_conclusion, "accent") }}
+
+{% if charts.consumption_ratio_bar %}
+**图表1-3：财年纸袋配比趋势**
+{{ charts.consumption_ratio_bar }}
+{% endif %}
+
+### 配比控制结果
+
+{{ report_note("管理结论", "订单配比控制判断", order_control_management_conclusion, "accent") }}
+
+{% if charts.order_control_summary_cards %}
+**图表1-4：配比控制概况卡**
+{{ charts.order_control_summary_cards }}
+{% endif %}
+
+{% if top_order_anomalies %}
+{% if charts.order_anomaly_region_table %}
+**图表1-5：重点异常地区明细**
+{{ charts.order_anomaly_region_table }}
+{% endif %}
+{% else %}
+{% if charts.order_anomaly_status_card %}
+**图表1-5：配比控制状态卡**
+{{ charts.order_anomaly_status_card }}
+{% endif %}
+{% endif %}
+
+### 盘点控制（盘差＞5%大区明细）
+
+{{ report_note("管理结论", "盘点控制判断", stocktake_management_conclusion, "accent") }}
+
+{% if charts.stocktake_difference_cards %}
+**图表1-6：盘差率大于 5% 大区风险卡片**
+{{ charts.stocktake_difference_cards }}
+{% endif %}
+
+{% if charts.stocktake_difference_fiscal_amount_bar %}
+**图表1-7：盘差率大于 5% 盘点财年金额统计（盘亏/盘盈/净合计）**
+{{ charts.stocktake_difference_fiscal_amount_bar }}
+{% endif %}
+
+{% if charts.stocktake_monthly_bar %}
+**图表1-8：全国纸袋盘点走势（盘差/盘盈/总计）**
+{{ charts.stocktake_monthly_bar }}
+{% endif %}
+
+---
+
+## 六、纸袋使用合规率与库存健康度诊断（AI驱动）
+
+{{ report_note("管理结论", "健康度诊断结论", diagnosis_management_conclusion, "accent") }}
+
+### 大区纸袋健康度综合排名
+
+| 排名 | 大区 | 综合得分 | 使用合规率得分 | 库存健康度得分 | 状态 |
+|---|---|---|---|---|---|
+{% for row in diagnosis_ranking %}
+| {{ loop.index }} | {{ row.region }} | {{ row.composite_score }}分 | {{ row.usage_compliance_score }}分 | {{ row.inventory_health_score }}分 | {{ row.status }} |
+{% endfor %}
+{% if not diagnosis_ranking %}
+| 本期无诊断数据 | - | - | - | - | - |
+{% endif %}
+
+{% if problem_light_details %}
+{% for detail in problem_light_details %}
+### {{ detail.status }} {{ detail.region }}（综合得分：{{ detail.composite_score }}分）
+
+**整体诊断**：{{ detail.diagnosis_type }}
+
+**基础数据**：理论需求 {{ detail.total_theory_qty }} 个，实际消耗 {{ detail.total_actual_qty }} 个，月末库存 {{ detail.total_stock_qty }} 个。
+
+{% if detail.usage_problems %}
+**使用问题归并**
+
+| 问题编号 | 问题类型 | 简练描述 | 涉及型号 |
+|---|---|---|---|
+{% for group in detail.usage_problem_groups %}
+| {{ group.problem_no }} | {{ group.problem_type }} | {{ group.description }} | {{ group.sizes }} |
+{% endfor %}
+
+**使用端问题明细**（按实际占比与理论占比的偏差计算，原始偏差超过±15%的部分才扣分）
+
+| 尺码 | 理论占比 | 实际占比 | 原始偏差率 | 超容忍偏差 | 尺码得分 | 具体情况 |
+|---|---|---|---|---|---|---|
+{% for p in detail.usage_problems %}
+| **{{ p.size }}** | {{ p.theory_ratio_pct }} | {{ p.actual_ratio_pct }} | {{ p.deviation_rate_pct }} | {{ p.adjusted_deviation_rate_pct }} | {{ p.size_score }}分 | {{ p.direction }} |
+{% endfor %}
+{% endif %}
+
+{% if detail.stock_problems %}
+**库存端问题：哪些尺码备偏了？**（库存占比相对理论需求占比偏差超过5个百分点才扣分）
+
+| 问题类型 | 尺码 | 库存占比 | 理论需求占比 | 原始偏差率 | 超容忍偏差 | 具体情况 | 库存量 |
+|---|---|---|---|---|---|---|---|
+{% for p in detail.stock_problems %}
+| {{ p.problem_type }} | **{{ p.size }}** | {{ p.stock_ratio_pct }} | {{ p.theory_ratio_pct }} | {{ p.diff_pct }} | {{ p.adjusted_diff_pct }} | {{ p.direction }} | {{ p.stock_qty }} |
+{% endfor %}
+{% endif %}
+
+{% if detail.recommended_actions %}
+**推荐行动计划**
+
+| 优先级 | 行动项 | 具体措施 | 预期效果 | 建议时限 |
+|---|---|---|---|---|
+{% for action in detail.recommended_actions %}
+| {{ action.priority }} | {{ action.action_item }} | {{ action.measure }} | {{ action.expected_effect }} | {{ action.deadline }} |
+{% endfor %}
+{% endif %}
+
+{% if not detail.usage_problems and not detail.stock_problems %}
+各尺码偏差不算特别突出，但多个尺码的小偏差累积起来拉低了总分。
+{% endif %}
+
+{% endfor %}
+{% endif %}
+
+{% if yellow_light_summary %}
+### 黄灯大区简要提示
+
+| 大区 | 综合得分 | 使用合规率得分 | 库存健康度得分 | 问题类型 |
+|---|---|---|---|---|
+{% for row in yellow_light_summary %}
+| {{ row.region }} | {{ row.composite_score }}分 | {{ row.usage_compliance_score }}分 | {{ row.inventory_health_score }}分 | {{ row.diagnosis_type }} |
+{% endfor %}
+{% endif %}
+
+---
+
+## 七、AI 重点行动清单（可执行・分级）
+
+{{ report_note("AI洞察", "重点问题摘要", ai_display_summary if ai_display_summary else '本期未识别到新增重点洞察。', "warning") }}
+
+{{ report_note("分级标准", "P1/P2判定口径", ai_priority_standard, "neutral") }}
+
+### P1 最高优先级（含中高风险）
+
+| 区域 | 问题类型 | 重点型号 | 优先级判定依据 | 关键依据 | 行动清单（型号/动作/数量） | 下月复盘指标 |
+|---|---|---|---|---|---|---|
+{% for item in ai_actions_p1 %}
+| {{ item.region }} | {{ item.issue_type_label }} | {{ item.focus_models|join('、') if item.focus_models else '非型号问题' }} | {{ item.priority_reason if item.priority_reason else item.priority_rule }} | {{ item.root_cause_multiline if item.root_cause_multiline else '待补充' }} | {{ item.business_plan if item.business_plan else '待补充' }} | {{ item.review_metric_text }} |
+{% endfor %}
+{% if not ai_actions_p1 %}
+| 本期无P1重点区域 | 无 | 无 | 无 | 无 | 持续监控 | 下月持续复盘 |
+{% endif %}
+
+### P2 常规优先级
+
+| 区域 | 问题类型 | 重点型号 | 优先级判定依据 | 关键依据 | 行动清单（型号/动作/数量） | 下月复盘指标 |
+|---|---|---|---|---|---|---|
+{% for item in ai_actions_p2 %}
+| {{ item.region }} | {{ item.issue_type_label }} | {{ item.focus_models|join('、') if item.focus_models else '非型号问题' }} | {{ item.priority_reason if item.priority_reason else item.priority_rule }} | {{ item.root_cause_multiline if item.root_cause_multiline else '待补充' }} | {{ item.business_plan if item.business_plan else '待补充' }} | {{ item.review_metric_text }} |
+{% endfor %}
+{% if not ai_actions_p2 %}
+| 本期无P2常规问题 | 无 | 无 | 无 | 无 | 持续监控 | 下月持续复盘 |
+{% endif %}

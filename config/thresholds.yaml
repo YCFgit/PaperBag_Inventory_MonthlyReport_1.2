@@ -1,0 +1,15 @@
+thresholds:
+  inventory_green_max: 2.5
+  inventory_yellow_max: 3.5
+  purchase_urgent_max: 0.0
+  purchase_focus_max: 0.5
+  purchase_watch_max: 1.0
+  purchase_excess_max: 3.5
+  purchase_inventory_min: 10000.0
+  purchase_future_ratio_min: 2.5
+  purchase_inbound_min: 0.0
+  order_anomaly_ratio_min: 1.0
+  inventory_loss_rate_max: 0.05
+  inventory_loss_amount_3m_max: 1000.0
+  regional_inventory_loss_amount_max: 1000.0
+  regional_inventory_loss_qty_max: 1000.0

@@ -1,0 +1,104 @@
+project:
+  name: "PaperBag Inventory Monthly Report 1.2"
+  slug: "paper_bag_inventory_monthly_report_1_2"
+
+timezone: Asia/Shanghai
+
+guanyuan:
+  base_url: "https://data-application-test.topsports.com.cn"
+  auth_token_path: "/auth-token/oauth2/client_token"
+  data_card_path_template: "/data-strategy/guanYuan/card/{card_id}/Data"
+
+llm:
+  enabled: true
+  base_url: "https://api.openai.com/v1"
+  model: "gpt-4o-mini"
+  timeout_seconds: 60
+
+dingtalk:
+  enabled: true
+
+scheduler:
+  cron: "0 9 1 * *"
+
+storage:
+  raw_data_dir: "data/raw"
+  processed_data_dir: "data/processed"
+  report_dir: "data/reports"
+
+fallback_data:
+  card_collection_dir: "/Users/ycf/Documents/AI纸袋月报/纸袋卡片集合-2605"
+
+scope:
+  apply_remote_filters: false
+  drop_total_rows_with_region_scope: true
+  allowed_regions:
+    - "东北"
+    - "云贵渝"
+    - "京津晋"
+    - "冀蒙"
+    - "川藏新"
+    - "总公司"
+    - "总部"
+    - "河南"
+    - "浙皖"
+    - "港澳"
+    - "湘桂"
+    - "粤海"
+    - "西北"
+    - "鄂赣闽"
+    - "鲁东沪"
+    - "鲁西苏"
+    - "华东一区"
+    - "华东二区"
+    - "华中一区"
+    - "华中二区"
+    - "华北一区"
+    - "华北二区"
+    - "华南一区"
+    - "华南二区"
+    - "华西区"
+  allowed_brand_codes:
+    - "AC"
+    - "AD"
+    - "AT"
+    - "BB"
+    - "CA"
+    - "CB"
+    - "CU"
+    - "CV"
+    - "EK"
+    - "FC"
+    - "GE"
+    - "HK"
+    - "KA"
+    - "LN"
+    - "MC"
+    - "MD"
+    - "MH"
+    - "MI"
+    - "MN"
+    - "MT"
+    - "ND"
+    - "NF"
+    - "NK"
+    - "NN"
+    - "OT"
+    - "PU"
+    - "RB"
+    - "SH"
+    - "SR"
+    - "SX"
+    - "TB"
+    - "VN"
+
+supplemental_data:
+  forecast_workbook_path: "/Users/ycf/Documents/AI纸袋月报/纸袋卡片集合-2605/u114a0c72ae524037a53c8d1.xlsx"
+  forecast_workbook_glob: "~/Downloads/滔搏纸袋订购辅助-未来30天纸袋使用量预测 *.xlsx"
+  forecast_workbook_sheet: "到大区型号"
+  paper_bag_specs_workbook_path: "/Users/ycf/Documents/AI纸袋月报/纸袋规格.xlsx"
+  paper_bag_specs_workbook_sheet: "纸袋规格"
+
+report:
+  locale: "zh-CN"
+  template_path: "config/report_template.md.j2"

@@ -1,0 +1,874 @@
+cards:
+  - card_id: "xe5da9d423db44bbe96028ad"
+    name: "大区库销比_不含团购_配合AI月报使用"
+    role: "regional_inventory_ratio"
+    section: "inventory_diagnosis"
+    pagination:
+      limit: 100
+      offset: 0
+      max_pages: 3
+    request_body:
+      view: "GRAPH"
+      refresh: true
+    dynamic_params:
+      - dpId: "k3f1d8c555ab042099868b48"
+        name: "同期结束日期"
+        valueType: "DATE"
+        defaultValue: "{{previous_year_same_month_end}}"
+        customize: false
+        multiple: false
+        optionValue:
+          - ""
+        inheritParent: true
+      - dpId: "q9449858e835644258862170"
+        name: "同期开始日期"
+        valueType: "DATE"
+        defaultValue: "{{previous_year_same_month_start}}"
+        customize: false
+        multiple: false
+        optionValue:
+          - ""
+        inheritParent: true
+      - dpId: "u064d05fd7afa476eb316f4d"
+        name: "本期结束日期"
+        valueType: "DATE"
+        defaultValue: "{{report_month_end}}"
+        customize: false
+        multiple: false
+        optionValue:
+          - ""
+        inheritParent: true
+      - dpId: "i9d306a091b284600b9bd28e"
+        name: "本期开始日期"
+        valueType: "DATE"
+        defaultValue: "{{report_month_start}}"
+        customize: false
+        multiple: false
+        optionValue:
+          - ""
+        inheritParent: true
+    notes: "地区库销比主卡；按月报月份动态传入同期/本期起止日期，API 优先，必要时允许本地卡片集合兜底。"
+
+  - card_id: "l6e08fdcc7fef45ccaa31d1b"
+    name: "店铺订单维度纸袋使用配比明细"
+    role: "order_ratio_anomalies"
+    section: "consumption_exceptions"
+    allow_empty_result: true
+    empty_reason: "本期无异常订单属于正常现象"
+    pagination:
+      limit: 200
+      offset: 0
+      max_pages: 10
+    request_body:
+      refresh: true
+      view: "GRAPH"
+    dynamic_params: []
+    filters:
+      - filterValue:
+          - "{{report_month_start}}"
+          - "{{report_month_end}}"
+        name: "日期"
+        fdType: "DATE"
+        dsId: "r618a8b9c1c394c9496a4678"
+        fdId: "raae588ba49004a708bec5f6"
+        metaType: "DIM"
+        seqNo: 33
+        subs:
+          - name: "年"
+            fdType: "SUB_DATE"
+            parentFdName: "日期"
+            dsId: "r618a8b9c1c394c9496a4678"
+            fdId: "raae588ba49004a708bec5f6_year"
+            metaType: "DIM"
+            seqNo: 33
+            granularity: "YEAR"
+            isAggregated: false
+            calculationType: "normal"
+            level: "dataset"
+            annotation: ""
+            isDetectionSensitive: false
+            isSensitive: false
+            baseFdType: "DATE"
+            hidden: false
+          - name: "季度"
+            fdType: "SUB_DATE"
+            parentFdName: "日期"
+            dsId: "r618a8b9c1c394c9496a4678"
+            fdId: "raae588ba49004a708bec5f6_quarter"
+            metaType: "DIM"
+            seqNo: 33
+            granularity: "QUARTER"
+            isAggregated: false
+            calculationType: "normal"
+            level: "dataset"
+            annotation: ""
+            isDetectionSensitive: false
+            isSensitive: false
+            baseFdType: "DATE"
+            hidden: false
+          - name: "月"
+            fdType: "SUB_DATE"
+            parentFdName: "日期"
+            dsId: "r618a8b9c1c394c9496a4678"
+            fdId: "raae588ba49004a708bec5f6_month"
+            metaType: "DIM"
+            seqNo: 33
+            granularity: "MONTH"
+            isAggregated: false
+            calculationType: "normal"
+            level: "dataset"
+            annotation: ""
+            isDetectionSensitive: false
+            isSensitive: false
+            baseFdType: "DATE"
+            hidden: false
+          - name: "周"
+            fdType: "SUB_DATE"
+            parentFdName: "日期"
+            dsId: "r618a8b9c1c394c9496a4678"
+            fdId: "raae588ba49004a708bec5f6_week"
+            metaType: "DIM"
+            seqNo: 33
+            granularity: "WEEK"
+            isAggregated: false
+            calculationType: "normal"
+            level: "dataset"
+            annotation: ""
+            isDetectionSensitive: false
+            isSensitive: false
+            baseFdType: "DATE"
+            hidden: false
+          - name: "星期"
+            fdType: "SUB_DATE"
+            parentFdName: "日期"
+            dsId: "r618a8b9c1c394c9496a4678"
+            fdId: "raae588ba49004a708bec5f6_dayofweek"
+            metaType: "DIM"
+            seqNo: 33
+            granularity: "DAYOFWEEK"
+            isAggregated: false
+            calculationType: "normal"
+            level: "dataset"
+            annotation: ""
+            isDetectionSensitive: false
+            isSensitive: false
+            baseFdType: "DATE"
+            hidden: false
+        isAggregated: false
+        calculationType: "normal"
+        level: "dataset"
+        annotation: ""
+        isDetectionSensitive: false
+        isSensitive: false
+        baseFdType: "DATE"
+        hidden: false
+        id: "0b476a0a-1222-7c3f-8c38-220da5781f72"
+        filterLevel: "DETAIL"
+        filterType: "BT"
+    notes: "订单级异常明细卡；按当月起止日请求，API 优先，允许空结果。"
+
+  - card_id: "a597c4441b7414c93a7c502d"
+    name: "库销比&进销比-by大区*(滔搏纸袋-分型号)"
+    role: "regional_model_purchase_analysis"
+    section: "inventory_diagnosis"
+    pagination:
+      limit: 200
+      offset: 0
+      max_pages: 10
+    request_body:
+      refresh: true
+      view: "GRAPH"
+    filters:
+      - filterValue:
+          - "滔搏纸袋-L"
+          - "滔搏纸袋-M"
+          - "滔搏纸袋-S"
+          - "滔搏纸袋-XL"
+          - "滔搏纸袋-XS"
+        name: "滔搏纸袋分类"
+        fdType: "STRING"
+        dsId: "r618a8b9c1c394c9496a4678"
+        fdId: "w44eab66644444b9cb08036b"
+        metaType: "DIM"
+        seqNo: 55
+        formula: |-
+          case when [产品货号] in("ZD010L","ZD2023L") THEN
+          "滔搏纸袋-L"
+          when [产品货号] in("ZD010M","ZD2023M") THEN
+          "滔搏纸袋-M"
+          when [产品货号] in("ZD010XS","ZD2023XS") THEN
+          "滔搏纸袋-XS"
+          when [产品货号] in("ZD010XL","ZD2023XL") THEN
+          "滔搏纸袋-XL"
+          when [产品货号] in("ZD010S","ZD2023S") THEN
+          "滔搏纸袋-S"
+          ELSE "其他" end
+        isAggregated: false
+        calculationType: "normal"
+        id: "42021986-4075-d93b-5a4e-f61b44d5f198"
+        filterLevel: "DETAIL"
+        filterType: "IN"
+    dynamic_params:
+      - dpId: "k3f1d8c555ab042099868b48"
+        name: "同期结束日期"
+        valueType: "DATE"
+        defaultValue: "{{previous_year_same_month_end}}"
+        customize: false
+        multiple: false
+        optionValue:
+          - ""
+        inheritParent: true
+        sourceCdId: "a597c4441b7414c93a7c502d"
+      - dpId: "q9449858e835644258862170"
+        name: "同期开始日期"
+        valueType: "DATE"
+        defaultValue: "{{previous_year_same_month_start}}"
+        customize: false
+        multiple: false
+        optionValue:
+          - ""
+        inheritParent: true
+        sourceCdId: "a597c4441b7414c93a7c502d"
+      - dpId: "u064d05fd7afa476eb316f4d"
+        name: "本期结束日期"
+        valueType: "DATE"
+        defaultValue: "{{report_month_end}}"
+        customize: false
+        multiple: false
+        optionValue:
+          - ""
+        inheritParent: true
+        sourceCdId: "a597c4441b7414c93a7c502d"
+      - dpId: "i9d306a091b284600b9bd28e"
+        name: "本期开始日期"
+        valueType: "DATE"
+        defaultValue: "{{report_month_start}}"
+        customize: false
+        multiple: false
+        optionValue:
+          - ""
+        inheritParent: true
+        sourceCdId: "a597c4441b7414c93a7c502d"
+    notes: "分型号库存/进销分析主卡；按月报月份动态传参，API 优先，必要时允许本地卡片集合兜底。"
+
+  - card_id: "qd0651b4b8bc944e88a6d1f0"
+    name: "门店纸袋盘点-by月"
+    role: "stocktake_monthly"
+    section: "consumption_exceptions"
+    pagination:
+      limit: 200
+      offset: 0
+      max_pages: 3
+    request_body:
+      rowExpand: null
+      name: "门店纸袋盘点-by月"
+    dynamic_params: []
+    filters:
+      - filterValue:
+          - "2024-03-01"
+        name: "盘点日"
+        fdType: "DATE"
+        dsId: "qc0c6e9a009aa464693585a1"
+        fdId: "w211274d7554e4649898e3d8"
+        metaType: "DIM"
+        seqNo: 41
+        subs:
+          - name: "年"
+            fdType: "SUB_DATE"
+            parentFdName: "盘点日"
+            dsId: "qc0c6e9a009aa464693585a1"
+            fdId: "w211274d7554e4649898e3d8_year"
+            metaType: "DIM"
+            seqNo: 41
+            granularity: "YEAR"
+            formula: "[字符串盘点日]"
+            isAggregated: false
+            calculationType: "normal"
+            level: "dataset"
+            isDetectionSensitive: false
+            isSensitive: false
+            baseFdType: "DATE"
+            hidden: false
+          - name: "季度"
+            fdType: "SUB_DATE"
+            parentFdName: "盘点日"
+            dsId: "qc0c6e9a009aa464693585a1"
+            fdId: "w211274d7554e4649898e3d8_quarter"
+            metaType: "DIM"
+            seqNo: 41
+            granularity: "QUARTER"
+            formula: "[字符串盘点日]"
+            isAggregated: false
+            calculationType: "normal"
+            level: "dataset"
+            isDetectionSensitive: false
+            isSensitive: false
+            baseFdType: "DATE"
+            hidden: false
+          - name: "月"
+            fdType: "SUB_DATE"
+            parentFdName: "盘点日"
+            dsId: "qc0c6e9a009aa464693585a1"
+            fdId: "w211274d7554e4649898e3d8_month"
+            metaType: "DIM"
+            seqNo: 41
+            granularity: "MONTH"
+            formula: "[字符串盘点日]"
+            isAggregated: false
+            calculationType: "normal"
+            level: "dataset"
+            isDetectionSensitive: false
+            isSensitive: false
+            baseFdType: "DATE"
+            hidden: false
+          - name: "周"
+            fdType: "SUB_DATE"
+            parentFdName: "盘点日"
+            dsId: "qc0c6e9a009aa464693585a1"
+            fdId: "w211274d7554e4649898e3d8_week"
+            metaType: "DIM"
+            seqNo: 41
+            granularity: "WEEK"
+            formula: "[字符串盘点日]"
+            isAggregated: false
+            calculationType: "normal"
+            level: "dataset"
+            isDetectionSensitive: false
+            isSensitive: false
+            baseFdType: "DATE"
+            hidden: false
+          - name: "星期"
+            fdType: "SUB_DATE"
+            parentFdName: "盘点日"
+            dsId: "qc0c6e9a009aa464693585a1"
+            fdId: "w211274d7554e4649898e3d8_dayofweek"
+            metaType: "DIM"
+            seqNo: 41
+            granularity: "DAYOFWEEK"
+            formula: "[字符串盘点日]"
+            isAggregated: false
+            calculationType: "normal"
+            level: "dataset"
+            isDetectionSensitive: false
+            isSensitive: false
+            baseFdType: "DATE"
+            hidden: false
+        formula: "[字符串盘点日]"
+        isAggregated: false
+        calculationType: "normal"
+        level: "dataset"
+        isDetectionSensitive: false
+        isSensitive: false
+        baseFdType: "DATE"
+        hidden: false
+        id: "33005c27-978b-a78b-5e79-8888f73fb2fb"
+        filterLevel: "DETAIL"
+        filterType: "GE"
+      - filterValue:
+          - "{{report_month_end}}"
+        name: "盘点日"
+        fdType: "DATE"
+        dsId: "qc0c6e9a009aa464693585a1"
+        fdId: "w211274d7554e4649898e3d8"
+        metaType: "DIM"
+        seqNo: 41
+        subs:
+          - name: "年"
+            fdType: "SUB_DATE"
+            parentFdName: "盘点日"
+            dsId: "qc0c6e9a009aa464693585a1"
+            fdId: "w211274d7554e4649898e3d8_year"
+            metaType: "DIM"
+            seqNo: 41
+            granularity: "YEAR"
+            formula: "[字符串盘点日]"
+            isAggregated: false
+            calculationType: "normal"
+            level: "dataset"
+            isDetectionSensitive: false
+            isSensitive: false
+            baseFdType: "DATE"
+            hidden: false
+          - name: "季度"
+            fdType: "SUB_DATE"
+            parentFdName: "盘点日"
+            dsId: "qc0c6e9a009aa464693585a1"
+            fdId: "w211274d7554e4649898e3d8_quarter"
+            metaType: "DIM"
+            seqNo: 41
+            granularity: "QUARTER"
+            formula: "[字符串盘点日]"
+            isAggregated: false
+            calculationType: "normal"
+            level: "dataset"
+            isDetectionSensitive: false
+            isSensitive: false
+            baseFdType: "DATE"
+            hidden: false
+          - name: "月"
+            fdType: "SUB_DATE"
+            parentFdName: "盘点日"
+            dsId: "qc0c6e9a009aa464693585a1"
+            fdId: "w211274d7554e4649898e3d8_month"
+            metaType: "DIM"
+            seqNo: 41
+            granularity: "MONTH"
+            formula: "[字符串盘点日]"
+            isAggregated: false
+            calculationType: "normal"
+            level: "dataset"
+            isDetectionSensitive: false
+            isSensitive: false
+            baseFdType: "DATE"
+            hidden: false
+          - name: "周"
+            fdType: "SUB_DATE"
+            parentFdName: "盘点日"
+            dsId: "qc0c6e9a009aa464693585a1"
+            fdId: "w211274d7554e4649898e3d8_week"
+            metaType: "DIM"
+            seqNo: 41
+            granularity: "WEEK"
+            formula: "[字符串盘点日]"
+            isAggregated: false
+            calculationType: "normal"
+            level: "dataset"
+            isDetectionSensitive: false
+            isSensitive: false
+            baseFdType: "DATE"
+            hidden: false
+          - name: "星期"
+            fdType: "SUB_DATE"
+            parentFdName: "盘点日"
+            dsId: "qc0c6e9a009aa464693585a1"
+            fdId: "w211274d7554e4649898e3d8_dayofweek"
+            metaType: "DIM"
+            seqNo: 41
+            granularity: "DAYOFWEEK"
+            formula: "[字符串盘点日]"
+            isAggregated: false
+            calculationType: "normal"
+            level: "dataset"
+            isDetectionSensitive: false
+            isSensitive: false
+            baseFdType: "DATE"
+            hidden: false
+        formula: "[字符串盘点日]"
+        isAggregated: false
+        calculationType: "normal"
+        level: "dataset"
+        isDetectionSensitive: false
+        isSensitive: false
+        baseFdType: "DATE"
+        hidden: false
+        id: "33005c27-978b-a78b-5e79-8888f73fb2fb"
+        filterLevel: "DETAIL"
+        filterType: "LE"
+    notes: "门店盘点月度概况卡；使用盘点日 GE/LE 日期范围过滤，起始日固定为 2024-03-01，结束日按月报月份动态取值。"
+
+  - card_id: "j21833508e589464c922d381"
+    name: "门店纸袋配比[总]-by月"
+    role: "consumption_ratio_monthly"
+    section: "consumption_exceptions"
+    pagination:
+      limit: 100
+      offset: 0
+      max_pages: 3
+    request_body:
+      view: "GRID"
+      rowExpand: null
+      name: "门店纸袋配比[总]-by月"
+    filters: []
+    dynamic_params:
+      - dpId: "k3f1d8c555ab042099868b48"
+        name: "同期结束日期"
+        valueType: "DATE"
+        defaultValue: "{{previous_year_same_month_end}}"
+        customize: false
+        multiple: false
+        optionValue:
+          - ""
+        inheritParent: true
+        sourceCdId: "j21833508e589464c922d381"
+      - dpId: "q9449858e835644258862170"
+        name: "同期开始日期"
+        valueType: "DATE"
+        defaultValue: "{{previous_year_same_month_start}}"
+        customize: false
+        multiple: false
+        optionValue:
+          - ""
+        inheritParent: true
+        sourceCdId: "j21833508e589464c922d381"
+      - dpId: "i9d306a091b284600b9bd28e"
+        name: "本期开始日期"
+        valueType: "DATE"
+        defaultValue: "{{report_month_start}}"
+        customize: false
+        multiple: false
+        optionValue:
+          - ""
+        inheritParent: false
+        sourceCdId: "j21833508e589464c922d381"
+      - dpId: "u064d05fd7afa476eb316f4d"
+        name: "本期结束日期"
+        valueType: "DATE"
+        defaultValue: "{{report_month_end}}"
+        customize: false
+        multiple: false
+        optionValue:
+          - ""
+        inheritParent: true
+        sourceCdId: "j21833508e589464c922d381"
+    notes: "财年配比趋势主卡；该卡需使用 GRID 视图，按月报月份动态传入同期/本期起止日期。"
+
+  - card_id: "l1d70dacd48c3422d9f7f67c"
+    name: "门店纸袋使用情况[总]-财年"
+    role: "overall_consumption_summary"
+    section: "consumption_exceptions"
+    pagination:
+      limit: 200
+      offset: 0
+      max_pages: 1
+    request_body:
+      refresh: true
+      view: "GRAPH"
+    filters: []
+    dynamic_params:
+      - dpId: "k3f1d8c555ab042099868b48"
+        name: "同期结束日期"
+        valueType: "DATE"
+        defaultValue: "{{previous_year_same_month_end}}"
+        customize: false
+        multiple: false
+        optionValue:
+          - ""
+        inheritParent: true
+        sourceCdId: "l1d70dacd48c3422d9f7f67c"
+      - dpId: "q9449858e835644258862170"
+        name: "同期开始日期"
+        valueType: "DATE"
+        defaultValue: "{{previous_year_same_month_start}}"
+        customize: false
+        multiple: false
+        optionValue:
+          - ""
+        inheritParent: true
+        sourceCdId: "l1d70dacd48c3422d9f7f67c"
+      - dpId: "i9d306a091b284600b9bd28e"
+        name: "本期开始日期"
+        valueType: "DATE"
+        defaultValue: "{{report_month_start}}"
+        customize: false
+        multiple: false
+        optionValue:
+          - ""
+        inheritParent: false
+        sourceCdId: "l1d70dacd48c3422d9f7f67c"
+      - dpId: "u064d05fd7afa476eb316f4d"
+        name: "本期结束日期"
+        valueType: "DATE"
+        defaultValue: "{{report_month_end}}"
+        customize: false
+        multiple: false
+        optionValue:
+          - ""
+        inheritParent: true
+        sourceCdId: "l1d70dacd48c3422d9f7f67c"
+    notes: "总体纸袋使用情况概览卡；按月报月份动态传参，不对纸袋分类做额外过滤，以保持与本地导出口径一致。"
+
+  - card_id: "d01d19a06c98445008a49a3f"
+    name: "滔搏纸袋库销比历史变化趋势-by日"
+    role: "overall_inventory_trend"
+    section: "inventory_diagnosis"
+    pagination:
+      limit: 200
+      offset: 0
+      max_pages: 10
+    request_body:
+      rowExpand: null
+      name: "滔搏纸袋库销比历史变化趋势-by日"
+    filters:
+      - filterValue:
+          - "{{previous_month_start}}"
+          - "{{report_month_end}}"
+        name: "日期"
+        fdType: "DATE"
+        dsId: "d03d87f8ecf0e4184a944b35"
+        fdId: "u6a8d7314c5454503a9847dc"
+        metaType: "DIM"
+        seqNo: 1
+        subs:
+          - name: "年"
+            fdType: "SUB_DATE"
+            parentFdName: "日期"
+            dsId: "d03d87f8ecf0e4184a944b35"
+            fdId: "u6a8d7314c5454503a9847dc_year"
+            metaType: "DIM"
+            seqNo: 1
+            granularity: "YEAR"
+            isAggregated: false
+            calculationType: "normal"
+            level: "dataset"
+            annotation: ""
+            isDetectionSensitive: false
+            isSensitive: false
+            baseFdType: "DATE"
+            hidden: false
+          - name: "季度"
+            fdType: "SUB_DATE"
+            parentFdName: "日期"
+            dsId: "d03d87f8ecf0e4184a944b35"
+            fdId: "u6a8d7314c5454503a9847dc_quarter"
+            metaType: "DIM"
+            seqNo: 1
+            granularity: "QUARTER"
+            isAggregated: false
+            calculationType: "normal"
+            level: "dataset"
+            annotation: ""
+            isDetectionSensitive: false
+            isSensitive: false
+            baseFdType: "DATE"
+            hidden: false
+          - name: "月"
+            fdType: "SUB_DATE"
+            parentFdName: "日期"
+            dsId: "d03d87f8ecf0e4184a944b35"
+            fdId: "u6a8d7314c5454503a9847dc_month"
+            metaType: "DIM"
+            seqNo: 1
+            granularity: "MONTH"
+            isAggregated: false
+            calculationType: "normal"
+            level: "dataset"
+            annotation: ""
+            isDetectionSensitive: false
+            isSensitive: false
+            baseFdType: "DATE"
+            hidden: false
+          - name: "周"
+            fdType: "SUB_DATE"
+            parentFdName: "日期"
+            dsId: "d03d87f8ecf0e4184a944b35"
+            fdId: "u6a8d7314c5454503a9847dc_week"
+            metaType: "DIM"
+            seqNo: 1
+            granularity: "WEEK"
+            isAggregated: false
+            calculationType: "normal"
+            level: "dataset"
+            annotation: ""
+            isDetectionSensitive: false
+            isSensitive: false
+            baseFdType: "DATE"
+            hidden: false
+          - name: "星期"
+            fdType: "SUB_DATE"
+            parentFdName: "日期"
+            dsId: "d03d87f8ecf0e4184a944b35"
+            fdId: "u6a8d7314c5454503a9847dc_dayofweek"
+            metaType: "DIM"
+            seqNo: 1
+            granularity: "DAYOFWEEK"
+            isAggregated: false
+            calculationType: "normal"
+            level: "dataset"
+            annotation: ""
+            isDetectionSensitive: false
+            isSensitive: false
+            baseFdType: "DATE"
+            hidden: false
+        isAggregated: false
+        calculationType: "normal"
+        level: "dataset"
+        annotation: ""
+        isDetectionSensitive: false
+        isSensitive: false
+        baseFdType: "DATE"
+        hidden: false
+        id: "8620f5e4-49a9-25f9-ccd1-832656179149"
+        filterLevel: "DETAIL"
+        filterType: "BT"
+      - filterValue:
+          - "滔搏纸袋"
+        name: "滔搏纸袋判断"
+        fdType: "STRING"
+        fdId: "pa6d1dfab3645468eb003866"
+        metaType: "DIM"
+        seqNo: 16
+        formula: "case when [产品货号] in ('ZD010L','ZD010M','ZD010S','ZD010XL','ZD010XS','ZD2023L','ZD2023M','ZD2023S','ZD2023XL','ZD2023XS') THEN '滔搏纸袋' else '非滔搏纸袋' end"
+        isAggregated: false
+        calculationType: "normal"
+        ifEncoded: true
+        id: "9179bfe3-b052-95d0-5500-499bca9f197b"
+        filterLevel: "DETAIL"
+        filterType: "IN"
+    dynamic_params:
+      - dpId: "i9d306a091b284600b9bd28e"
+        name: "本期开始日期"
+        valueType: "DATE"
+        defaultValue: "{{fiscal_year_start}}"
+        customize: false
+        multiple: false
+        optionValue:
+          - ""
+        inheritParent: false
+        sourceCdId: "d01d19a06c98445008a49a3f"
+      - dpId: "u064d05fd7afa476eb316f4d"
+        name: "本期结束日期"
+        valueType: "DATE"
+        defaultValue: "{{report_month_end}}"
+        customize: false
+        multiple: false
+        optionValue:
+          - ""
+        inheritParent: true
+        sourceCdId: "d01d19a06c98445008a49a3f"
+    notes: "日趋势主卡；按上月月初至报表月末筛选日期，并保留当前财年起点动态参数。"
+
+  - card_id: "nb692ce19d26a49569de3ca8"
+    name: "纸袋盘差表（月度盘差率大于5%）大区图表"
+    role: "stocktake_difference_chart"
+    section: "consumption_exceptions"
+    pagination:
+      limit: 200
+      offset: 0
+      max_pages: 3
+    request_body:
+      refresh: true
+      view: "GRAPH"
+    dynamic_params: []
+    filters:
+      - filterValue:
+          - "2023-01-01"
+          - "{{report_month_end}}"
+        name: "盘点日"
+        fdType: "DATE"
+        dsId: "f501150d172e94e9ea2152fb"
+        fdId: "w211274d7554e4649898e3d8"
+        metaType: "DIM"
+        seqNo: 42
+        subs:
+          - name: "年"
+            fdType: "SUB_DATE"
+            parentFdName: "盘点日"
+            dsId: "f501150d172e94e9ea2152fb"
+            fdId: "w211274d7554e4649898e3d8_year"
+            metaType: "DIM"
+            seqNo: 42
+            granularity: "YEAR"
+            formula: "[字符串盘点日]"
+            isAggregated: false
+            calculationType: "normal"
+            level: "dataset"
+            isDetectionSensitive: false
+            isSensitive: false
+            baseFdType: "DATE"
+            hidden: false
+          - name: "季度"
+            fdType: "SUB_DATE"
+            parentFdName: "盘点日"
+            dsId: "f501150d172e94e9ea2152fb"
+            fdId: "w211274d7554e4649898e3d8_quarter"
+            metaType: "DIM"
+            seqNo: 42
+            granularity: "QUARTER"
+            formula: "[字符串盘点日]"
+            isAggregated: false
+            calculationType: "normal"
+            level: "dataset"
+            isDetectionSensitive: false
+            isSensitive: false
+            baseFdType: "DATE"
+            hidden: false
+          - name: "月"
+            fdType: "SUB_DATE"
+            parentFdName: "盘点日"
+            dsId: "f501150d172e94e9ea2152fb"
+            fdId: "w211274d7554e4649898e3d8_month"
+            metaType: "DIM"
+            seqNo: 42
+            granularity: "MONTH"
+            formula: "[字符串盘点日]"
+            isAggregated: false
+            calculationType: "normal"
+            level: "dataset"
+            isDetectionSensitive: false
+            isSensitive: false
+            baseFdType: "DATE"
+            hidden: false
+          - name: "周"
+            fdType: "SUB_DATE"
+            parentFdName: "盘点日"
+            dsId: "f501150d172e94e9ea2152fb"
+            fdId: "w211274d7554e4649898e3d8_week"
+            metaType: "DIM"
+            seqNo: 42
+            granularity: "WEEK"
+            formula: "[字符串盘点日]"
+            isAggregated: false
+            calculationType: "normal"
+            level: "dataset"
+            isDetectionSensitive: false
+            isSensitive: false
+            baseFdType: "DATE"
+            hidden: false
+          - name: "星期"
+            fdType: "SUB_DATE"
+            parentFdName: "盘点日"
+            dsId: "f501150d172e94e9ea2152fb"
+            fdId: "w211274d7554e4649898e3d8_dayofweek"
+            metaType: "DIM"
+            seqNo: 42
+            granularity: "DAYOFWEEK"
+            formula: "[字符串盘点日]"
+            isAggregated: false
+            calculationType: "normal"
+            level: "dataset"
+            isDetectionSensitive: false
+            isSensitive: false
+            baseFdType: "DATE"
+            hidden: false
+        formula: "[字符串盘点日]"
+        isAggregated: false
+        calculationType: "normal"
+        level: "dataset"
+        isDetectionSensitive: false
+        isSensitive: false
+        baseFdType: "DATE"
+        hidden: false
+        id: "7551ef5b-0e2e-e1af-9ebd-0ee5e82dbd29"
+        filterLevel: "DETAIL"
+        filterType: "BT"
+    notes: "盘差率大于 5% 大区图表卡；保留 2023-01-01 至报表月末的完整历史窗口。"
+
+  - card_id: "u114a0c72ae524037a53c8d1"
+    name: "滔搏纸袋订购辅助-未来30天纸袋使用量预测"
+    role: "purchase_forecast_api"
+    section: "inventory_diagnosis"
+    enabled: false
+    pagination:
+      limit: 500
+      offset: 0
+      max_pages: 10
+    request_body:
+      view: "GRID"
+    dynamic_params: []
+    filters: []
+    notes: "不再走远程卡片接口；由 SupplementalDataService 从本地 Excel 直接加载同名导出表。"
+
+  - card_id: "b0432cceaa1944241be3f0dc"
+    name: "纸袋盘差表（月度盘差率大于5%）大区维度"
+    role: "stocktake_difference"
+    section: "consumption_exceptions"
+    local_only: true
+    pagination:
+      limit: 500
+      offset: 0
+      max_pages: 1
+    request_body:
+      view: "GRAPH"
+    dynamic_params: []
+    filters: []
+    notes: "仅使用本地 Excel 兜底，不再请求远程 API。"

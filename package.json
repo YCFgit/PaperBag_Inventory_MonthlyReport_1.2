@@ -1,0 +1,12 @@
+{
+  "name": "paperbag-inventory-monthly-report-1-2",
+  "private": true,
+  "version": "1.2.0",
+  "description": "Automation for the TopSports paper bag inventory monthly report.",
+  "scripts": {
+    "export-pdf": "node scripts/html_to_pdf.js"
+  },
+  "dependencies": {
+    "puppeteer-core": "^25.1.0"
+  }
+}
