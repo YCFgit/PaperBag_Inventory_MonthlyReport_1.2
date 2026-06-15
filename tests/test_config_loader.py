@@ -252,3 +252,47 @@ report:
 
     assert app_config.project_name == "Paper Bag Inventory Monthly Report 1.2"
     assert app_config.project_slug == "paper_bag_inventory_monthly_report_1_2"
+
+
+def test_project_app_config_defaults_to_second_day_schedule_and_conversation_file_only(monkeypatch) -> None:
+    project_root = Path(__file__).resolve().parents[1]
+    monkeypatch.setenv("DINGTALK_DELIVERY_MODE", "conversation_file_only")
+
+    app_config = load_app_config(project_root)
+
+    assert app_config.monthly_cron == "0 9 2 * *"
+    assert app_config.dingtalk_delivery_mode == "conversation_file_only"
+
+
+def test_load_app_config_reads_dingtalk_enterprise_credentials(tmp_path: Path, monkeypatch) -> None:
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "app.yaml").write_text(
+        """
+timezone: Asia/Shanghai
+guanyuan:
+  base_url: "https://example.com"
+  auth_token_path: "/auth"
+  data_card_path_template: "/card/{card_id}"
+storage:
+  raw_data_dir: "data/raw"
+  processed_data_dir: "data/processed"
+  report_dir: "data/reports"
+report:
+  template_path: "config/report_template.md.j2"
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DINGTALK_APP_KEY", "app-key")
+    monkeypatch.setenv("DINGTALK_APP_SECRET", "app-secret")
+    monkeypatch.setenv("DINGTALK_AGENT_ID", "4668444612")
+    monkeypatch.setenv("DINGTALK_CORP_ID", "dingcorp")
+    monkeypatch.setenv("DINGTALK_OPEN_CONVERSATION_ID", "oc_test")
+
+    app_config = load_app_config(tmp_path)
+
+    assert app_config.dingtalk_app_key == "app-key"
+    assert app_config.dingtalk_app_secret == "app-secret"
+    assert app_config.dingtalk_agent_id == "4668444612"
+    assert app_config.dingtalk_corp_id == "dingcorp"
+    assert app_config.dingtalk_open_conversation_id == "oc_test"

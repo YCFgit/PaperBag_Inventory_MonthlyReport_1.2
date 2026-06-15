@@ -84,7 +84,7 @@ python -m src.main replay-raw --raw-file data/raw/2026-03/<run_id>/<file>.json -
 
 **观远 BI 接口限制（已验证 2026-04-09）：** 多张卡片在追加 filters 后返回 `500 / None.get`，因此当前采用"不推送远端筛选 + 本地标准化后过滤"策略。修改卡片筛选逻辑前务必参考 `docs/integration_notes.md` 中的已验证行为。
 
-**环境变量覆盖：** `config/app.yaml` 中的敏感字段（client_secret、llm_api_key、dingtalk_webhook 等）通过 `.env` 文件覆盖，`.env.example` 列出了所有可用变量。
+**环境变量覆盖：** `config/app.yaml` 中的敏感字段（client_secret、llm_api_key、dingtalk_app_secret 等）通过 `.env` 文件覆盖，`.env.example` 列出了所有可用变量。
 
 **报告月默认推导规则：** 默认取上月作为报告月（如当前 2026-06 则报告 2026-05），可通过 `--month YYYY-MM` 显式指定。
 

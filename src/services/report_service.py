@@ -47,7 +47,7 @@ class ReportService:
         ).strip() + "\n"
         markdown = self._center_table_headers(markdown)
 
-        output_path = report_dir / f"{self._report_prefix(context)}_{context.report_month}_{context.run_id}.md"
+        output_path = report_dir / f"{self._report_base_name(context.report_month)}.md"
         output_path.write_text(markdown, encoding="utf-8")
         self.logger.info("Report markdown generated at %s", output_path)
         self._generate_pdf(output_path)
@@ -55,7 +55,7 @@ class ReportService:
         executive_summary = highlights[0] if highlights else "本月报告已生成。"
         return ReportDocument(
             report_month=context.report_month,
-            title=f"{month_label(context.report_month)}纸袋月度库存AI分析报告",
+            title=self._report_display_title(context.report_month),
             markdown=markdown,
             output_path=output_path,
             executive_summary=executive_summary,
@@ -189,7 +189,7 @@ class ReportService:
         diagnosis_management_conclusion = self._build_diagnosis_management_conclusion(diagnosis)
 
         return {
-            "title": "纸袋月度库存AI分析报告",
+            "title": self._report_display_title(context.report_month),
             "report_month": context.report_month,
             "report_month_label": month_title,
             "previous_month_label": month_label(previous_month),
@@ -2405,7 +2405,7 @@ class ReportService:
         comparisons = self._compare_followup_items(followup_items, previous_payload.get("items", []) if previous_payload else [])
 
         lines = [
-            "# 纸袋月报问题跟进文档",
+            f"# {self._followup_display_title(context.report_month)}",
             "",
             f"**统计周期：{month_label(context.report_month)}**  ",
             f"**生成时间：{context.generated_at.strftime('%Y-%m-%d %H:%M:%S')}**  ",
@@ -2466,9 +2466,9 @@ class ReportService:
             lines.append("| 无可比对项 | - | - | - | 等待形成连续两个月数据后自动评分 |")
 
         followup_markdown = self._center_table_headers("\n".join(lines).strip() + "\n")
-        followup_prefix = self._followup_prefix(context)
-        followup_path = report_dir / f"{followup_prefix}_{context.report_month}_{context.run_id}.md"
-        followup_json_path = report_dir / f"{followup_prefix}_{context.report_month}_{context.run_id}.json"
+        followup_base_name = self._followup_base_name(context.report_month)
+        followup_path = report_dir / f"{followup_base_name}_{context.run_id}.md"
+        followup_json_path = report_dir / f"{followup_base_name}_{context.run_id}.json"
         followup_path.write_text(followup_markdown, encoding="utf-8")
         followup_json_path.write_text(json.dumps(followup_payload, ensure_ascii=False, indent=2), encoding="utf-8")
         self.logger.info("Issue follow-up document generated at %s", followup_path)
@@ -2484,7 +2484,8 @@ class ReportService:
         if not previous_dir.exists():
             return None
         patterns = [
-            f"{self._followup_prefix(context)}_{previous_month}_*.json",
+            f"{self._followup_base_name(previous_month)}_*.json",
+            f"*_issue_followup_{previous_month}_*.json",
             f"paper_bag_issue_followup_{previous_month}_*.json",
         ]
         candidates: list[Path] = []
@@ -2504,10 +2505,17 @@ class ReportService:
             return context.project_slug.strip()
         return "paper_bag_monthly_report"
 
-    def _followup_prefix(self, context: TaskContext | None = None) -> str:
-        if context and context.project_slug.strip():
-            return f"{context.project_slug.strip()}_issue_followup"
-        return "paper_bag_issue_followup"
+    def _report_base_name(self, report_month: str) -> str:
+        return f"{report_month.replace('-', '')}-月度纸袋分析报告"
+
+    def _report_display_title(self, report_month: str) -> str:
+        return self._report_base_name(report_month)
+
+    def _followup_base_name(self, report_month: str) -> str:
+        return f"{self._report_base_name(report_month)}-followup"
+
+    def _followup_display_title(self, report_month: str) -> str:
+        return f"{self._report_display_title(report_month)}-问题跟进"
 
     def _compare_followup_items(self, current_items: list[dict[str, Any]], previous_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         previous_map = {

@@ -1,3 +1,4 @@
+import json
 import re
 from datetime import datetime
 from pathlib import Path
@@ -197,11 +198,12 @@ def test_report_service_renders_markdown(tmp_path: Path) -> None:
     )
 
     assert report.output_path.exists()
-    assert "纸袋月度库存AI分析报告" in report.markdown
+    assert "202603-月度纸袋分析报告" in report.markdown
+    assert report.title == "202603-月度纸袋分析报告"
     assert "摘要" in report.markdown
 
 
-def test_report_service_uses_project_slug_for_output_files(tmp_path: Path) -> None:
+def test_report_service_uses_fixed_monthly_output_name(tmp_path: Path) -> None:
     template_path = tmp_path / "report_template.md.j2"
     template_path.write_text("# {{ title }}\n\n{{ sections[0].summary }}\n", encoding="utf-8")
 
@@ -271,8 +273,8 @@ def test_report_service_uses_project_slug_for_output_files(tmp_path: Path) -> No
         report_dir=tmp_path / "reports",
     )
 
-    assert report.output_path.name == "renamed_project_2026-03_slug1234.md"
-    assert (tmp_path / "reports" / "2026-03" / "renamed_project_issue_followup_2026-03_slug1234.md").exists()
+    assert report.output_path.name == "202603-月度纸袋分析报告.md"
+    assert (tmp_path / "reports" / "2026-03" / "202603-月度纸袋分析报告-followup_slug1234.md").exists()
 
 
 def test_project_report_template_uses_ai_monthly_regional_ratio_source_name() -> None:
@@ -294,7 +296,6 @@ def test_project_report_template_uses_ai_monthly_regional_ratio_source_name() ->
     assert "## 二、销账异常" not in template_text
     assert "## 三、AI 洞察" not in template_text
     assert "来源口径" not in template_text
-    assert "数据来源" not in template_text
     assert "图表7-1：全国纸袋盘点月度矩阵" not in template_text
     assert "图表8-1：按大区纸袋盘点矩阵" not in template_text
     assert "图表1-8：按大区纸袋盘点分布" not in template_text
@@ -409,14 +410,33 @@ def test_followup_document_uses_quantified_action_list_header(tmp_path: Path) ->
         report_dir=tmp_path / "reports",
     )
 
-    followup_path = tmp_path / "reports" / "2026-03" / "paper_bag_issue_followup_2026-03_efgh5678.md"
+    followup_path = tmp_path / "reports" / "2026-03" / "202603-月度纸袋分析报告-followup_efgh5678.md"
     followup_markdown = followup_path.read_text(encoding="utf-8")
 
+    assert "# 202603-月度纸袋分析报告-问题跟进" in followup_markdown
     assert "行动清单（型号/动作/数量）" in followup_markdown
     assert "问题、解决方向、行动清单、复盘指标必须一一对应" in followup_markdown
     assert "只跟进本表问题，不新增无依据事项" in followup_markdown
     assert "1. 滔搏纸袋-XL：库存积压，库销比4.20，立即停止订购。" in followup_markdown
     assert "2. 滔搏纸袋-S：库存短缺，库销比0.10，尽快补货5000个。" in followup_markdown
+
+
+def test_load_previous_followup_payload_supports_legacy_issue_followup_names(tmp_path: Path) -> None:
+    template_path = tmp_path / "report_template.md.j2"
+    template_path.write_text("# {{ title }}\n", encoding="utf-8")
+    service = ReportService(template_path, DummyLogger())
+    previous_dir = tmp_path / "reports" / "2026-02"
+    previous_dir.mkdir(parents=True)
+    legacy_payload = {"items": [{"issue_key": "legacy-1", "severity_score": 5}]}
+    legacy_path = previous_dir / "renamed_project_issue_followup_2026-02_oldrun.json"
+    legacy_path.write_text(json.dumps(legacy_payload, ensure_ascii=False), encoding="utf-8")
+
+    payload = service._load_previous_followup_payload(
+        report_dir=tmp_path / "reports" / "2026-03",
+        report_month="2026-03",
+    )
+
+    assert payload == legacy_payload
 
 
 def test_template_context_builds_combo_charts(tmp_path: Path) -> None:

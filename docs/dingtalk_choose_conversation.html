@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>钉钉 openConversationId 获取工具</title>
+  <script src="https://g.alicdn.com/dingding/dingtalk-jsapi/3.1.0/dingtalk.open.js"></script>
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --panel: #ffffff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --border: #dbe4ee;
+      --accent: #1677ff;
+      --accent-2: #0f766e;
+      --danger: #b91c1c;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 24px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: linear-gradient(180deg, #f8fbff 0%, var(--bg) 100%);
+      color: var(--text);
+    }
+
+    .wrap {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    input, textarea {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font: inherit;
+      background: #fff;
+      color: var(--text);
+    }
+
+    textarea {
+      min-height: 96px;
+      resize: vertical;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 11px 16px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      color: #fff;
+      background: var(--accent);
+    }
+
+    button.secondary {
+      background: var(--accent-2);
+    }
+
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .status {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      white-space: pre-wrap;
+    }
+
+    .status.error {
+      color: var(--danger);
+      border-color: #fecaca;
+      background: #fef2f2;
+    }
+
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .full {
+      grid-column: 1 / -1;
+    }
+
+    @media (max-width: 720px) {
+      body {
+        padding: 16px;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>获取 openConversationId</h1>
+      <p>这个页面需要在钉钉客户端内打开。页面会优先尝试自动读取当前企业 corpId，再从后端拉取 dd.config 签名参数，最后完成选群并保存绑定。</p>
+    </div>
+
+    <div class="card">
+      <div class="grid">
+        <div class="full">
+          <label for="jsapiConfigUrl">JSAPI 配置接口</label>
+          <input id="jsapiConfigUrl" placeholder="例如 https://your-domain/api/dingtalk/jsapi-config" />
+        </div>
+        <div>
+          <label for="corpId">corpId</label>
+          <input id="corpId" placeholder="例如 dingxxxxxxxx" />
+        </div>
+        <div>
+          <label for="agentId">agentId</label>
+          <input id="agentId" value="4668444612" />
+        </div>
+        <div>
+          <label for="timeStamp">timeStamp</label>
+          <input id="timeStamp" placeholder="例如 1718188800" />
+        </div>
+        <div>
+          <label for="nonceStr">nonceStr</label>
+          <input id="nonceStr" placeholder="随机字符串" />
+        </div>
+        <div class="full">
+          <label for="signature">signature</label>
+          <textarea id="signature" placeholder="服务端生成的 dd.config 签名"></textarea>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="fetchConfigBtn">自动获取签名参数</button>
+        <button id="initBtn">初始化 JSAPI</button>
+        <button id="chooseBtn" class="secondary" disabled>选择钉钉群并获取 openConversationId</button>
+      </div>
+
+      <div id="status" class="status">等待初始化。</div>
+    </div>
+
+    <div class="card">
+      <label for="result">返回结果</label>
+      <textarea id="result" readonly placeholder="选群成功后，这里会显示 title / chatId / openConversationId"></textarea>
+    </div>
+
+    <div class="card">
+      <label for="bindingResult">已保存绑定</label>
+      <textarea id="bindingResult" readonly placeholder="绑定成功后，这里会显示后端已保存的群信息"></textarea>
+    </div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const statusEl = document.getElementById("status");
+    const resultEl = document.getElementById("result");
+    const bindingResultEl = document.getElementById("bindingResult");
+    const chooseBtn = document.getElementById("chooseBtn");
+
+    const setStatus = (message, isError = false) => {
+      statusEl.textContent = message;
+      statusEl.className = isError ? "status error" : "status";
+    };
+
+    const getValue = (id) => document.getElementById(id).value.trim();
+    const setValue = (id, value) => {
+      document.getElementById(id).value = value;
+    };
+    const tryResolveCorpId = () => {
+      try {
+        if (getValue("corpId")) {
+          return getValue("corpId");
+        }
+        if (typeof dd !== "undefined" && dd && typeof dd.corpId === "string" && dd.corpId.trim()) {
+          setValue("corpId", dd.corpId.trim());
+          return dd.corpId.trim();
+        }
+      } catch (_error) {
+        return "";
+      }
+      return "";
+    };
+    const normalizedPageUrl = () => {
+      const current = new URL(window.location.href);
+      current.hash = "";
+      return current.toString();
+    };
+    const defaultJsapiConfigUrl = () => {
+      if (params.get("jsapiConfigUrl")) {
+        return params.get("jsapiConfigUrl");
+      }
+      if (window.location.origin && window.location.origin.startsWith("http")) {
+        return new URL("/api/dingtalk/jsapi-config", window.location.origin).toString();
+      }
+      return "";
+    };
+
+    setValue("jsapiConfigUrl", defaultJsapiConfigUrl());
+    setValue("corpId", params.get("corpId") || "");
+    setValue("agentId", params.get("agentId") || getValue("agentId"));
+    tryResolveCorpId();
+
+    const loadExistingBinding = async () => {
+      if (!window.location.origin || !window.location.origin.startsWith("http")) {
+        return;
+      }
+      try {
+        const response = await fetch(new URL("/api/dingtalk/binding", window.location.origin).toString());
+        if (!response.ok) {
+          return;
+        }
+        const payload = await response.json();
+        bindingResultEl.value = JSON.stringify(payload, null, 2);
+        if (!getValue("corpId") && payload.corpId) {
+          setValue("corpId", payload.corpId);
+        }
+      } catch (_error) {
+        return;
+      }
+    };
+
+    const persistBinding = async (payload) => {
+      const response = await fetch(new URL("/api/dingtalk/binding", window.location.origin).toString(), {
+        method: "POST",
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "保存群绑定失败");
+      }
+      bindingResultEl.value = JSON.stringify(data, null, 2);
+      return data;
+    };
+
+    loadExistingBinding();
+
+    document.getElementById("fetchConfigBtn").addEventListener("click", async () => {
+      const corpId = getValue("corpId");
+      const endpoint = getValue("jsapiConfigUrl");
+      const resolvedCorpId = corpId || tryResolveCorpId();
+      if (!resolvedCorpId) {
+        setStatus("请先填写 corpId。", true);
+        return;
+      }
+      if (!endpoint) {
+        setStatus("请先填写 JSAPI 配置接口地址。", true);
+        return;
+      }
+
+      setStatus("正在向后端获取 dd.config 签名参数 ...");
+
+      try {
+        const requestUrl = new URL(endpoint);
+        requestUrl.searchParams.set("corpId", resolvedCorpId);
+        requestUrl.searchParams.set("url", normalizedPageUrl());
+
+        const response = await fetch(requestUrl.toString(), {
+          method: "GET",
+          headers: { "Accept": "application/json" }
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || "获取签名参数失败");
+        }
+
+        setValue("corpId", payload.corpId || resolvedCorpId);
+        setValue("agentId", String(payload.agentId || ""));
+        setValue("timeStamp", String(payload.timeStamp || ""));
+        setValue("nonceStr", payload.nonceStr || "");
+        setValue("signature", payload.signature || "");
+        setStatus("签名参数已获取。现在可以点“初始化 JSAPI”。");
+      } catch (error) {
+        setStatus("获取签名参数失败：\n" + (error && error.message ? error.message : String(error)), true);
+      }
+    });
+
+    document.getElementById("initBtn").addEventListener("click", () => {
+      const corpId = getValue("corpId") || tryResolveCorpId();
+      const agentId = getValue("agentId");
+      const timeStamp = getValue("timeStamp");
+      const nonceStr = getValue("nonceStr");
+      const signature = getValue("signature");
+
+      if (!corpId || !agentId || !timeStamp || !nonceStr || !signature) {
+        setStatus("初始化失败：请先填完整 corpId / agentId / timeStamp / nonceStr / signature。", true);
+        return;
+      }
+
+      setStatus("正在初始化 dd.config ...");
+
+      dd.config({
+        agentId,
+        corpId,
+        timeStamp,
+        nonceStr,
+        signature,
+        jsApiList: ["biz.chat.chooseConversationByCorpId", "runtime.permission.requestAuthCode"]
+      });
+
+      dd.ready(() => {
+        chooseBtn.disabled = false;
+        setStatus("dd.config 初始化成功。现在可以点“选择钉钉群并获取 openConversationId”。");
+      });
+
+      dd.error((error) => {
+        chooseBtn.disabled = true;
+        setStatus("dd.config 初始化失败：\n" + JSON.stringify(error, null, 2), true);
+      });
+    });
+
+    const requestAuthCode = (corpId) => new Promise((resolve, reject) => {
+      dd.runtime.permission.requestAuthCode({
+        corpId,
+        onSuccess: (result) => resolve(result.code || ""),
+        onFail: (error) => reject(error)
+      });
+    });
+
+    chooseBtn.addEventListener("click", () => {
+      const corpId = getValue("corpId") || tryResolveCorpId();
+      if (!corpId) {
+        setStatus("请先填写 corpId。", true);
+        return;
+      }
+
+      setStatus("正在打开群选择器 ...");
+
+      dd.biz.chat.chooseConversationByCorpId({
+        corpId,
+        isNeedCreateChat: false,
+        onSuccess: async (result) => {
+          resultEl.value = JSON.stringify(result, null, 2);
+          try {
+            const authCode = await requestAuthCode(corpId);
+            await persistBinding({
+              corpId,
+              openConversationId: result.openConversationId,
+              title: result.title || "",
+              chatId: result.chatId || "",
+              authCode
+            });
+            setStatus("获取成功，目标群与 unionId 已绑定保存。后续定时任务会按群文件链路自动发送 PDF。");
+          } catch (error) {
+            setStatus(
+              "已获取 openConversationId，但保存绑定失败：\n" +
+              (error && error.message ? error.message : String(error)),
+              true
+            );
+          }
+        },
+        onFail: (error) => {
+          setStatus("选群失败：\n" + JSON.stringify(error, null, 2), true);
+        }
+      });
+    });
+  </script>
+</body>
+</html>

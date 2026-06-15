@@ -74,10 +74,13 @@ class AppConfig:
     llm_api_key: str = ""
     llm_model: str = ""
     llm_timeout_seconds: int = 60
-    dingtalk_webhook: str = ""
-    openclaw_endpoint: str = ""
-    openclaw_token: str = ""
-    monthly_cron: str = "0 9 1 * *"
+    dingtalk_app_key: str = ""
+    dingtalk_app_secret: str = ""
+    dingtalk_agent_id: str = ""
+    dingtalk_corp_id: str = ""
+    dingtalk_open_conversation_id: str = ""
+    dingtalk_delivery_mode: str = "conversation_file_only"
+    monthly_cron: str = "0 9 2 * *"
     default_report_locale: str = "zh-CN"
     enable_llm: bool = True
     enable_dingtalk: bool = True
@@ -154,3 +157,18 @@ class DeliveryResult:
     success: bool
     message: str
     response_payload: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class DingTalkConversationBinding:
+    corp_id: str
+    open_conversation_id: str
+    title: str = ""
+    chat_id: str = ""
+    union_id: str = ""
+    user_id: str = ""
+    operator_name: str = ""
+    space_id: str = ""
+    folder_id: str = ""
+    folder_uuid: str = ""
+    bound_at: str = ""

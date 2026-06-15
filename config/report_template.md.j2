@@ -205,6 +205,8 @@
 
 {{ report_note("管理结论", "健康度诊断结论", diagnosis_management_conclusion, "accent") }}
 
+{{ report_note("评分规则", "第六模块固定口径", "综合得分 = 使用合规率得分 × 50% + 库存健康度得分 × 50%<br>- 使用合规率得分：按尺码对比“实际使用量”与“标准化期望用量”，仅对超出 ±15% 宽容区间的部分扣分，并按理论需求占比加权。<br>- 库存健康度得分：对比“库存结构”与“理论需求结构”，仅对超出 ±5 个百分点宽容区间的部分计入错配度。<br>- 判定标准：≥85 分为绿灯，70-84 分为黄灯，<70 分为红灯。<br>- 数据来源：理论值与实际值优先取诊断 SQL 结果，缺失时回退到本项目已接入的大区型号卡片数据。") }}
+
 ### 大区纸袋健康度综合排名
 
 | 排名 | 大区 | 综合得分 | 使用合规率得分 | 库存健康度得分 | 状态 |
@@ -216,54 +218,54 @@
 | 本期无诊断数据 | - | - | - | - | - |
 {% endif %}
 
+{% if diagnosis.summary_sentence %}
+**一句话概述**：{{ diagnosis.summary_sentence }}
+{% endif %}
+
 {% if problem_light_details %}
 {% for detail in problem_light_details %}
 ### {{ detail.status }} {{ detail.region }}（综合得分：{{ detail.composite_score }}分）
 
-**整体诊断**：{{ detail.diagnosis_type }}
+**使用合规率得分：{{ detail.usage_compliance_score }}分 | 库存健康度得分：{{ detail.inventory_health_score }}分**
 
-**基础数据**：理论需求 {{ detail.total_theory_qty }} 个，实际消耗 {{ detail.total_actual_qty }} 个，月末库存 {{ detail.total_stock_qty }} 个。
+**使用合规诊断**
+
+- {{ detail.usage_diagnosis.severity }} **{{ detail.usage_diagnosis.label }}**：{{ detail.usage_diagnosis.summary }}
+
+{% if detail.stock_diagnosis.findings %}
+**库存健康诊断**
+
+{% for finding in detail.stock_diagnosis.findings %}
+- {{ finding.severity }} **{{ finding.label }}**：{{ finding.summary }}
+{% endfor %}
+{% endif %}
 
 {% if detail.usage_problems %}
-**使用问题归并**
+**使用端明细**（原始偏差率 = (实际量 - 标准化期望量) / 标准化期望量，仅超出 ±15% 的部分扣分）
 
-| 问题编号 | 问题类型 | 简练描述 | 涉及型号 |
-|---|---|---|---|
-{% for group in detail.usage_problem_groups %}
-| {{ group.problem_no }} | {{ group.problem_type }} | {{ group.description }} | {{ group.sizes }} |
-{% endfor %}
-
-**使用端问题明细**（按实际占比与理论占比的偏差计算，原始偏差超过±15%的部分才扣分）
-
-| 尺码 | 理论占比 | 实际占比 | 原始偏差率 | 超容忍偏差 | 尺码得分 | 具体情况 |
-|---|---|---|---|---|---|---|
+| 尺码 | 理论占比 | 实际占比 | 标准化期望用量 | 实际用量 | 原始偏差率 | 超容忍偏差 | 尺码得分 |
+|---|---|---|---:|---:|---|---|---|
 {% for p in detail.usage_problems %}
-| **{{ p.size }}** | {{ p.theory_ratio_pct }} | {{ p.actual_ratio_pct }} | {{ p.deviation_rate_pct }} | {{ p.adjusted_deviation_rate_pct }} | {{ p.size_score }}分 | {{ p.direction }} |
+| **{{ p.size }}** | {{ p.theory_ratio_pct }} | {{ p.actual_ratio_pct }} | {{ p.expected_actual_qty }} | {{ p.actual_qty }} | {{ p.deviation_rate_pct }} | {{ p.adjusted_deviation_rate_pct }} | {{ p.size_score }}分 |
 {% endfor %}
 {% endif %}
 
 {% if detail.stock_problems %}
-**库存端问题：哪些尺码备偏了？**（库存占比相对理论需求占比偏差超过5个百分点才扣分）
+**库存端明细**（库存结构偏差仅对超出 ±5 个百分点的部分计入错配）
 
-| 问题类型 | 尺码 | 库存占比 | 理论需求占比 | 原始偏差率 | 超容忍偏差 | 具体情况 | 库存量 |
-|---|---|---|---|---|---|---|---|
+| 问题类型 | 尺码 | 库存占比 | 理论需求占比 | 原始偏差 | 超容忍偏差 | 库存深度（月） | 库存量 |
+|---|---|---|---|---|---|---:|---:|
 {% for p in detail.stock_problems %}
-| {{ p.problem_type }} | **{{ p.size }}** | {{ p.stock_ratio_pct }} | {{ p.theory_ratio_pct }} | {{ p.diff_pct }} | {{ p.adjusted_diff_pct }} | {{ p.direction }} | {{ p.stock_qty }} |
+| {{ p.problem_type }} | **{{ p.size }}** | {{ p.stock_ratio_pct }} | {{ p.theory_ratio_pct }} | {{ p.diff_pct }} | {{ p.adjusted_diff_pct }} | {{ p.inventory_depth_months }} | {{ p.stock_qty }} |
 {% endfor %}
 {% endif %}
 
-{% if detail.recommended_actions %}
-**推荐行动计划**
+{% if detail.priority_actions %}
+**优先行动**
 
-| 优先级 | 行动项 | 具体措施 | 预期效果 | 建议时限 |
-|---|---|---|---|---|
-{% for action in detail.recommended_actions %}
-| {{ action.priority }} | {{ action.action_item }} | {{ action.measure }} | {{ action.expected_effect }} | {{ action.deadline }} |
+{% for action in detail.priority_actions %}
+{{ loop.index }}. {{ action }}
 {% endfor %}
-{% endif %}
-
-{% if not detail.usage_problems and not detail.stock_problems %}
-各尺码偏差不算特别突出，但多个尺码的小偏差累积起来拉低了总分。
 {% endif %}
 
 {% endfor %}
@@ -272,11 +274,17 @@
 {% if yellow_light_summary %}
 ### 黄灯大区简要提示
 
-| 大区 | 综合得分 | 使用合规率得分 | 库存健康度得分 | 问题类型 |
+| 大区 | 综合得分 | 使用问题 | 库存问题 | 建议 |
 |---|---|---|---|---|
 {% for row in yellow_light_summary %}
-| {{ row.region }} | {{ row.composite_score }}分 | {{ row.usage_compliance_score }}分 | {{ row.inventory_health_score }}分 | {{ row.diagnosis_type }} |
+| {{ row.region }} | {{ row.composite_score }}分 | {{ row.usage_issue }} | {{ row.stock_issue }} | {{ row.suggestion }} |
 {% endfor %}
+{% endif %}
+
+{% if diagnosis.green_count %}
+### 绿灯大区
+
+配置与使用基本合理，持续跟踪。当前共 {{ diagnosis.green_count }} 个大区处于绿灯状态。
 {% endif %}
 
 ---

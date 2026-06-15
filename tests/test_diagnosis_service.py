@@ -86,10 +86,10 @@ def test_usage_problem_rows_expose_theory_and_actual_ratios() -> None:
     assert m_problem["theory_ratio_pct"] == "10.0%"
     assert m_problem["actual_ratio_pct"] == "100.0%"
     assert m_problem["usage_gap_text"] == "+90.0个百分点"
-    assert m_problem["deviation_rate_pct"] == "+90.0%"
-    assert m_problem["adjusted_deviation_rate_pct"] == "75.0%"
-    assert "expected_actual_qty" not in m_problem
-    assert "actual_qty" not in m_problem
+    assert m_problem["expected_actual_qty"] == 100.0
+    assert m_problem["actual_qty"] == 1000
+    assert m_problem["deviation_rate_pct"] == "+900.0%"
+    assert m_problem["adjusted_deviation_rate_pct"] == "885.0%"
     assert "大袋小用风险" in m_problem["direction"]
 
 
@@ -352,26 +352,17 @@ def test_diagnosis_only_keeps_current_nine_regions() -> None:
     assert diagnosis["diagnosis_ranking"][0]["region"] == "华东一区"
 
 
-def test_diagnosis_actual_sql_uses_zd010_and_zd2023_size_map() -> None:
+def test_diagnosis_actual_sql_uses_orig_fields_from_optimization_table() -> None:
     sql = DiagnosisService().load_and_render_sql("diagnosis_actual_consumption.sql", "2026-05")
 
-    assert "WITH paper_bag_size_map AS" in sql
-    assert "SELECT 'xs' AS bag_size" in sql
-    assert "'ZD010XS' AS pro_code" in sql
-    assert "SELECT 'xs', 'ZD2023XS'" in sql
-    assert "SELECT 's', 'ZD010S'" in sql
-    assert "SELECT 's', 'ZD2023S'" in sql
-    assert "SELECT 'm', 'ZD010M'" in sql
-    assert "SELECT 'm', 'ZD2023M'" in sql
-    assert "SELECT 'l', 'ZD010L'" in sql
-    assert "SELECT 'l', 'ZD2023L'" in sql
-    assert "SELECT 'xl', 'ZD010XL'" in sql
-    assert "SELECT 'xl', 'ZD2023XL'" in sql
-    assert "INNER JOIN paper_bag_size_map m" in sql
-    assert "ON a.pro_code = m.pro_code" in sql
-    assert "ELSE '其他'" not in sql
-    assert "MN2024XS" not in sql
-    assert "ZD011" not in sql
+    assert "paimon.dwd_pub.t18_top_paper_bag_opt_price" in sql
+    assert "SUM(COALESCE(t.orig_xs, 0))" in sql
+    assert "SUM(COALESCE(t.orig_s, 0))" in sql
+    assert "SUM(COALESCE(t.orig_m, 0))" in sql
+    assert "SUM(COALESCE(t.orig_l, 0))" in sql
+    assert "SUM(COALESCE(t.orig_xl, 0))" in sql
+    assert "paper_bag_size_map" not in sql
+    assert "pro_code" not in sql
 
 
 def test_diagnosis_inventory_sql_uses_zd010_and_zd2023_size_map() -> None:

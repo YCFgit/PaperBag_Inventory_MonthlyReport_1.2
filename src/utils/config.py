@@ -69,10 +69,16 @@ def load_app_config(project_root: Path) -> AppConfig:
         llm_api_key=os.getenv("LLM_API_KEY", ""),
         llm_model=os.getenv("LLM_MODEL", config.get("llm", {}).get("model", "")),
         llm_timeout_seconds=int(os.getenv("LLM_TIMEOUT_SECONDS", config.get("llm", {}).get("timeout_seconds", 60))),
-        dingtalk_webhook=os.getenv("DINGTALK_WEBHOOK", ""),
-        openclaw_endpoint=os.getenv("OPENCLAW_ENDPOINT", ""),
-        openclaw_token=os.getenv("OPENCLAW_TOKEN", ""),
-        monthly_cron=config.get("scheduler", {}).get("cron", "0 9 1 * *"),
+        dingtalk_app_key=os.getenv("DINGTALK_APP_KEY", ""),
+        dingtalk_app_secret=os.getenv("DINGTALK_APP_SECRET", ""),
+        dingtalk_agent_id=os.getenv("DINGTALK_AGENT_ID", ""),
+        dingtalk_corp_id=os.getenv("DINGTALK_CORP_ID", ""),
+        dingtalk_open_conversation_id=os.getenv("DINGTALK_OPEN_CONVERSATION_ID", ""),
+        dingtalk_delivery_mode=os.getenv(
+            "DINGTALK_DELIVERY_MODE",
+            config.get("dingtalk", {}).get("delivery_mode", "conversation_file_only"),
+        ),
+        monthly_cron=config.get("scheduler", {}).get("cron", "0 9 2 * *"),
         default_report_locale=config.get("report", {}).get("locale", "zh-CN"),
         enable_llm=str(os.getenv("ENABLE_LLM", str(config.get("llm", {}).get("enabled", True)))).lower() == "true",
         enable_dingtalk=str(os.getenv("ENABLE_DINGTALK", str(config.get("dingtalk", {}).get("enabled", True)))).lower()
@@ -197,5 +203,8 @@ def validate_loaded_app_config(app_config: AppConfig) -> list[str]:
         errors.append("storage.processed_data_dir must be configured.")
     if not app_config.report_dir:
         errors.append("storage.report_dir must be configured.")
+
+    if app_config.dingtalk_delivery_mode != "conversation_file_only":
+        errors.append("dingtalk.delivery_mode must be conversation_file_only.")
 
     return errors

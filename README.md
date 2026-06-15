@@ -47,7 +47,8 @@ cp .env.example .env
 - `GUANYUAN_CLIENT_SECRET`
 - `GUANYUAN_USER_ID`
 - `LLM_API_KEY`
-- `DINGTALK_WEBHOOK` 或 `OPENCLAW_ENDPOINT` + `OPENCLAW_TOKEN`
+- `DINGTALK_APP_KEY` + `DINGTALK_APP_SECRET` + `DINGTALK_AGENT_ID`（用于钉钉群文件空间上传与 `convFile` 发送）
+- `DINGTALK_CORP_ID`（仅在 H5 绑定页初始化 `dd.config` 时需要）
 
 ## 常用命令
 
@@ -57,10 +58,51 @@ cp .env.example .env
 python -m src.main validate-config
 ```
 
+检查钉钉发送链路是否就绪：
+
+```bash
+python -m src.main check-dingtalk --month 2026-05
+```
+
+按月定时运行：
+
+```bash
+python -m src.main schedule
+```
+
+默认配置为 `Asia/Shanghai` 时区、每月 `2` 日 `09:00` 触发，并按 `DINGTALK_DELIVERY_MODE=conversation_file_only` 发送 PDF 到钉钉群文件。
+
+启动本地钉钉 JSAPI 签名服务：
+
+```bash
+python -m src.main serve-dingtalk-jsapi --host 127.0.0.1 --port 8000
+```
+
+启动后可直接打开：
+
+```text
+http://127.0.0.1:8000/dingtalk/choose-conversation
+```
+
+这个页面会：
+
+- 优先尝试自动读取钉钉客户端里的 `corpId`
+- 自动获取 `dd.config` 签名参数
+- 让你选择目标钉钉群
+- 自动把 `openConversationId` 保存到 `data/processed/dingtalk_binding.json`
+
+目标群绑定只需要做一次。后续定时任务会直接读取这个绑定并自动发送 PDF。
+
 生成指定月份报告：
 
 ```bash
 python -m src.main run-once --month 2026-05
+```
+
+不重跑分析，直接重发已生成的 PDF：
+
+```bash
+python -m src.main send-existing-report --month 2026-05
 ```
 
 跳过 LLM 和发送，仅做数据联调：
@@ -111,3 +153,5 @@ python3 scripts/compare_api_local.py --month 2026-05
 ## 补充说明
 
 现行联调结论见 [docs/integration_notes.md](docs/integration_notes.md)。
+观远卡片 API 的通用介绍、调用方法和多语言示例见 [docs/guanyuan_card_api_operation.md](docs/guanyuan_card_api_operation.md)。
+钉钉群 `openConversationId` 的获取说明见 [docs/dingtalk_open_conversation_id.md](docs/dingtalk_open_conversation_id.md)。
