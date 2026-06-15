@@ -152,6 +152,8 @@ python3 scripts/compare_api_local.py --month 2026-05
 
 ## 补充说明
 
+版本变更记录见 [CHANGELOG.md](CHANGELOG.md)。
+`v1.2.1` 正式发布说明见 [docs/release_notes_v1.2.1.md](docs/release_notes_v1.2.1.md)。
 现行联调结论见 [docs/integration_notes.md](docs/integration_notes.md)。
 观远卡片 API 的通用介绍、调用方法和多语言示例见 [docs/guanyuan_card_api_operation.md](docs/guanyuan_card_api_operation.md)。
 钉钉群 `openConversationId` 的获取说明见 [docs/dingtalk_open_conversation_id.md](docs/dingtalk_open_conversation_id.md)。
