@@ -277,6 +277,113 @@ def test_report_service_uses_fixed_monthly_output_name(tmp_path: Path) -> None:
     assert (tmp_path / "reports" / "2026-03" / "202603-月度纸袋分析报告-followup_slug1234.md").exists()
 
 
+def test_emphasize_text_bolds_labels_numbers_and_keywords(tmp_path: Path) -> None:
+    template_path = tmp_path / "report_template.md.j2"
+    template_path.write_text("# {{ title }}\n", encoding="utf-8")
+    service = ReportService(template_path, DummyLogger())
+
+    emphasized = service._emphasize_text("核心问题：仍有2个地区处于红灯；管理动作：优先处理P1风险。")
+
+    assert "**核心问题：**" in emphasized
+    assert "**2个地区**" in emphasized
+    assert "**红灯**" in emphasized
+    assert "**管理动作：**" in emphasized
+    assert "**P1**" in emphasized
+
+
+def test_emphasize_text_does_not_double_wrap_priority_labels(tmp_path: Path) -> None:
+    template_path = tmp_path / "report_template.md.j2"
+    template_path.write_text("# {{ title }}\n", encoding="utf-8")
+    service = ReportService(template_path, DummyLogger())
+
+    emphasized = service._emphasize_text("P1判定：健康度综合得分46.32分；触发问题6项。")
+
+    assert "****" not in emphasized
+    assert "**P1判定：**" in emphasized
+    assert "**46.32**" in emphasized
+    assert "**6项**" in emphasized
+
+
+def test_normalize_ai_issue_type_label_deduplicates_repeated_problem_tags(tmp_path: Path) -> None:
+    template_path = tmp_path / "report_template.md.j2"
+    template_path.write_text("# {{ title }}\n", encoding="utf-8")
+    service = ReportService(template_path, DummyLogger())
+
+    normalized = service._normalize_ai_issue_type_label("大袋小用 + 库存结构不科学 / 库存结构不科学")
+
+    assert normalized == "大袋小用 + 库存结构不科学"
+
+
+def test_split_priority_action_groups_separates_inventory_usage_and_terminal(tmp_path: Path) -> None:
+    template_path = tmp_path / "report_template.md.j2"
+    template_path.write_text("# {{ title }}\n", encoding="utf-8")
+    service = ReportService(template_path, DummyLogger())
+
+    inventory_items, usage_items, terminal_items = service._split_priority_action_groups(
+        [
+            {
+                "issue_type_label": "高库存去化",
+                "action_details": [{"type": "overstock"}],
+            },
+            {
+                "issue_type_label": "大袋小用 + 库存结构不科学",
+                "action_details": [{"type": "diagnosis"}],
+            },
+            {
+                "issue_type_label": "终端执行偏差",
+                "action_details": [{"type": "order_anomaly"}],
+            },
+            {
+                "issue_type_label": "盘点差异复核",
+                "action_details": [{"type": "stocktake"}],
+            },
+        ],
+        max_per_group=3,
+    )
+
+    assert [item["issue_type_label"] for item in inventory_items] == ["高库存去化"]
+    assert [item["issue_type_label"] for item in usage_items] == ["大袋小用 + 库存结构不科学"]
+    assert [item["issue_type_label"] for item in terminal_items] == ["终端执行偏差", "盘点差异复核"]
+
+
+def test_build_priority_action_group_meta_contains_counts_and_display_hint(tmp_path: Path) -> None:
+    template_path = tmp_path / "report_template.md.j2"
+    template_path.write_text("# {{ title }}\n", encoding="utf-8")
+    service = ReportService(template_path, DummyLogger())
+
+    group = service._build_priority_action_group_meta(
+        key="usage",
+        label="纸袋使用合规类",
+        tone="orange",
+        description="聚焦大袋小用、尺码错配与纸袋使用合规动作。",
+        preview_items=[
+            {"priority": "P1", "issue_type_label": "大袋小用 + 库存结构不科学"},
+            {"priority": "P1", "issue_type_label": "大袋小用 + 库存结构不科学"},
+        ],
+        all_items=[
+            {"priority": "P1", "issue_type_label": "大袋小用 + 库存结构不科学"},
+            {"priority": "P1", "issue_type_label": "大袋小用 + 库存结构不科学"},
+            {"priority": "P2", "issue_type_label": "大袋小用 + 库存无法支持合理使用"},
+        ],
+        empty_message="本期暂无纸袋使用合规类重点动作。",
+    )
+
+    assert group["count_label"] == "3项重点动作"
+    assert group["priority_mix"] == "P1 2项 / P2 1项"
+    assert group["display_hint"] == "当前仅展示前2项，完整清单见第七部分。"
+    assert group["issue_snapshot"] == "大袋小用、库存健康问题"
+
+
+def test_dedupe_delimited_text_removes_repeated_segments(tmp_path: Path) -> None:
+    template_path = tmp_path / "report_template.md.j2"
+    template_path.write_text("# {{ title }}\n", encoding="utf-8")
+    service = ReportService(template_path, DummyLogger())
+
+    normalized = service._dedupe_delimited_text("库存结构不科学；库存结构不科学；库存结构不科学")
+
+    assert normalized == "库存结构不科学"
+
+
 def test_project_report_template_uses_ai_monthly_regional_ratio_source_name() -> None:
     template_path = Path(__file__).resolve().parents[1] / "config" / "report_template.md.j2"
     template_text = template_path.read_text(encoding="utf-8")
@@ -288,8 +395,16 @@ def test_project_report_template_uses_ai_monthly_regional_ratio_source_name() ->
     assert "## 五、使用配比与盘点异常（合规管控）" in template_text
     assert "## 六、纸袋使用合规率与库存健康度诊断（AI驱动）" in template_text
     assert "## 七、AI 重点行动清单（可执行・分级）" in template_text
-    assert "### P1 最高优先级（含中高风险）" in template_text
-    assert "### P2 常规优先级" in template_text
+    assert "库存与趋势判断" in template_text
+    assert "本月优先执行事项" in template_text
+    assert "执行区域" in template_text
+    assert "首要动作" in template_text
+    assert "action_group_header(group)" in template_text
+    assert "summary_card(group.label, group.count_label" in template_text
+    assert "### P1 重点动作" in template_text
+    assert "### P2 常规动作" in template_text
+    assert "group.display_hint" in template_text
+    assert "本月聚焦：" in template_text
     assert "下月复盘指标" in template_text
     assert "图表1-2：历史订购拼接后数据明细" not in template_text
     assert "## 一、纸袋库销诊断" not in template_text

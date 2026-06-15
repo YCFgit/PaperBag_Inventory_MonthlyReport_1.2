@@ -11,14 +11,14 @@
   }
 } %}
 {% set palette = tones[tone] %}
-<div class="report-note" style="margin:10px 0 12px 0;border:1px solid {{ palette.border }};border-left:4px solid {{ palette.accent }};border-radius:8px;overflow:hidden;background:{{ palette.body_bg }};box-shadow:0 1px 2px rgba(15,23,42,0.04);">
+<div class="report-note" style="margin:10px 0 12px 0;border:1px solid {{ palette.border }};border-left:4px solid {{ palette.accent }};border-radius:8px;overflow:hidden;background:{{ palette.body_bg }};box-shadow:0 1px 2px rgba(15,23,42,0.04);display:flex;flex-direction:column;height:100%;">
 <div style="padding:10px 14px;background:{{ palette.head_bg }};border-bottom:1px solid {{ palette.border }};">
 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
 <span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;background:{{ palette.tag_bg }};color:{{ palette.tag_text }};font-size:10px;font-weight:700;letter-spacing:0;">{{ tag }}</span>
 <span style="font-size:12px;font-weight:600;color:#334155;">{{ title }}</span>
 </div>
 </div>
-<div style="padding:12px 14px;font-size:13px;color:#1F2937;line-height:1.75;">{{ body | rich_text | safe }}</div>
+<div style="padding:12px 14px;font-size:13px;color:#1F2937;line-height:1.75;flex:1;">{{ body | emphasize_text | rich_text | safe }}</div>
 </div>
 {%- endmacro %}
 
@@ -27,6 +27,7 @@
   'green': {'border': '#BBF7D0', 'bg': '#F0FDF4', 'label': '#166534'},
   'yellow': {'border': '#FDE68A', 'bg': '#FFFBEB', 'label': '#92400E'},
   'red': {'border': '#FECACA', 'bg': '#FEF2F2', 'label': '#991B1B'},
+  'orange': {'border': '#FED7AA', 'bg': '#FFF7ED', 'label': '#C2410C'},
   'blue': {'border': '#BAE6FD', 'bg': '#F0F9FF', 'label': '#075985'},
   'neutral': {'border': '#E2E8F0', 'bg': '#F8FAFC', 'label': '#475569'}
 } %}
@@ -36,6 +37,83 @@
 <div style="font-size:18px;font-weight:800;color:#111827;line-height:1.25;">{{ value | safe }}</div>
 {% if caption %}<div style="font-size:11px;color:#64748B;line-height:1.45;">{{ caption | safe }}</div>{% endif %}
 </div>
+{%- endmacro %}
+
+{% macro inline_badge(text, tone='neutral') -%}
+{% set tones = {
+  'green': {'bg': '#DCFCE7', 'text': '#166534', 'border': '#BBF7D0'},
+  'yellow': {'bg': '#FEF3C7', 'text': '#92400E', 'border': '#FDE68A'},
+  'red': {'bg': '#FEE2E2', 'text': '#991B1B', 'border': '#FECACA'},
+  'blue': {'bg': '#DBEAFE', 'text': '#1D4ED8', 'border': '#BFDBFE'},
+  'orange': {'bg': '#FFEDD5', 'text': '#C2410C', 'border': '#FED7AA'},
+  'neutral': {'bg': '#F1F5F9', 'text': '#475569', 'border': '#CBD5E1'}
+} %}
+{% set palette = tones[tone] if tone in tones else tones['neutral'] %}
+<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:{{ palette.bg }};color:{{ palette.text }};border:1px solid {{ palette.border }};font-size:11px;font-weight:800;line-height:1.4;">{{ text }}</span>
+{%- endmacro %}
+
+{% macro strong_value(text) -%}
+<strong style="color:#111827;">{{ text }}</strong>
+{%- endmacro %}
+
+{% macro priority_action_card(item) -%}
+{% set badge_tone = 'red' if item.priority == 'P1' else 'yellow' if item.priority == 'P2' else 'neutral' %}
+{% set action_preview = item.business_plan.split('<br>')[0] if item.business_plan else '待补充' %}
+<div style="border:1px solid #E2E8F0;border-radius:10px;background:#FFFFFF;padding:14px;display:flex;flex-direction:column;gap:10px;box-shadow:0 1px 2px rgba(15,23,42,0.04);height:100%;min-height:262px;overflow:hidden;">
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
+<div>{{ inline_badge(item.group_label if item.group_label else '综合动作', item.group_tone if item.group_tone else 'neutral') }}</div>
+<div>{{ inline_badge(item.priority, badge_tone) }}</div>
+</div>
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
+<div style="display:flex;flex-direction:column;gap:4px;min-width:0;">
+<div style="font-size:12px;color:#64748B;font-weight:700;">执行区域</div>
+<div style="font-size:18px;line-height:1.3;color:#0F172A;font-weight:800;">{{ item.region }}</div>
+</div>
+</div>
+<div style="padding:10px 12px;border-radius:8px;background:#F8FAFC;border:1px solid #E2E8F0;">
+<div style="font-size:11px;color:#64748B;font-weight:700;margin-bottom:4px;">问题类型</div>
+<div style="font-size:13px;line-height:1.65;color:#1F2937;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">{{ item.issue_type_label | emphasize_text | rich_text | safe }}</div>
+</div>
+<div style="display:grid;grid-template-columns:1fr;gap:8px;flex:1;">
+<div>
+<div style="font-size:11px;color:#64748B;font-weight:700;margin-bottom:4px;">首要动作</div>
+<div style="font-size:13px;line-height:1.65;color:#1F2937;font-weight:700;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;">{{ action_preview | emphasize_text | rich_text | safe }}</div>
+</div>
+<div>
+<div style="font-size:11px;color:#64748B;font-weight:700;margin-bottom:4px;">复盘指标</div>
+<div style="font-size:12px;line-height:1.65;color:#475569;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;">{{ item.review_metric_text | emphasize_text | rich_text | safe }}</div>
+</div>
+</div>
+</div>
+{%- endmacro %}
+
+{% macro action_group_header(group) -%}
+<div style="padding:12px;border:1px solid {{ '#DBEAFE' if group.tone == 'blue' else '#FED7AA' if group.tone == 'orange' else '#FDE68A' if group.tone == 'yellow' else '#E2E8F0' }};border-radius:10px;background:{{ '#F8FBFF' if group.tone == 'blue' else '#FFF9F5' if group.tone == 'orange' else '#FFFBEB' if group.tone == 'yellow' else '#F8FAFC' }};min-height:132px;">
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+<div style="display:flex;flex-direction:column;gap:6px;">
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+{{ inline_badge(group.label, group.tone) }}
+<span style="font-size:12px;font-weight:800;color:#0F172A;">{{ group.count_label }}</span>
+</div>
+<div style="font-size:12px;color:#475569;line-height:1.6;">{{ group.description }}</div>
+</div>
+<div style="font-size:11px;color:#64748B;line-height:1.6;text-align:right;">{{ group.priority_mix }}</div>
+</div>
+{% if group.issue_snapshot %}
+<div style="margin-top:8px;font-size:12px;color:#334155;line-height:1.65;"><strong style="color:#0F172A;">本月聚焦：</strong>{{ group.issue_snapshot | emphasize_text | rich_text | safe }}</div>
+{% endif %}
+{% if group.display_hint %}
+<div style="margin-top:8px;font-size:11px;color:#64748B;line-height:1.6;">{{ group.display_hint }}</div>
+{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro ai_action_table(items, priority_label, priority_tone) -%}
+| 区域 | 问题类型 | 重点型号 | 优先级判定依据 | 关键依据 | 行动清单（型号/动作/数量） | 下月复盘指标 |
+|---|---|---|---|---|---|---|
+{% for item in items %}
+| {{ strong_value(item.region) }} | {{ item.issue_type_label | emphasize_text | rich_text | safe }} | {{ strong_value(item.focus_models|join('、') if item.focus_models else '非型号问题') }} | {{ inline_badge(priority_label, priority_tone) }}<br>{{ (item.priority_reason if item.priority_reason else item.priority_rule) | emphasize_text | rich_text | safe }} | {{ item.root_cause_multiline | emphasize_text | rich_text | safe if item.root_cause_multiline else '待补充' }} | {{ item.business_plan | emphasize_text | rich_text | safe if item.business_plan else '待补充' }} | {{ item.review_metric_text | emphasize_text | rich_text | safe }} |
+{% endfor %}
 {%- endmacro %}
 
 {% set cover_status = inventory_overview.status if inventory_overview.status else '待识别' %}
@@ -70,8 +148,8 @@
 <div style="padding:10px 14px;border-bottom:1px solid #E2E8F0;background:#F8FAFC;font-size:12px;font-weight:800;color:#0F172A;">经营摘要</div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;">
 <div style="padding:12px 14px;border-right:1px solid #E2E8F0;border-bottom:1px solid #E2E8F0;"><div style="font-size:11px;font-weight:800;color:#475569;margin-bottom:5px;">趋势判断</div><div style="font-size:13px;color:#1F2937;line-height:1.75;">{{ core_summary.trend_text | safe }}</div></div>
-<div style="padding:12px 14px;border-bottom:1px solid #E2E8F0;"><div style="font-size:11px;font-weight:800;color:#475569;margin-bottom:5px;">核心问题</div><div style="font-size:13px;color:#1F2937;line-height:1.75;">{{ core_summary.problem_text }}</div></div>
-<div style="padding:12px 14px;border-right:1px solid #E2E8F0;"><div style="font-size:11px;font-weight:800;color:#475569;margin-bottom:5px;">管理动作</div><div style="font-size:13px;color:#1F2937;line-height:1.75;">{{ core_summary.action_text }}</div></div>
+<div style="padding:12px 14px;border-bottom:1px solid #E2E8F0;"><div style="font-size:11px;font-weight:800;color:#475569;margin-bottom:5px;">核心问题</div><div style="font-size:13px;color:#1F2937;line-height:1.75;">{{ core_summary.problem_text | emphasize_text | rich_text | safe }}</div></div>
+<div style="padding:12px 14px;border-right:1px solid #E2E8F0;"><div style="font-size:11px;font-weight:800;color:#475569;margin-bottom:5px;">管理动作</div><div style="font-size:13px;color:#1F2937;line-height:1.75;">{{ core_summary.action_text | emphasize_text | rich_text | safe }}</div></div>
 <div style="padding:12px 14px;"><div style="font-size:11px;font-weight:800;color:#475569;margin-bottom:5px;">阅读顺序</div><div style="font-size:13px;color:#1F2937;line-height:1.75;">先看大区库销灯号，再看历史订购、型号结构、配比盘点，最后落到P1/P2行动清单。</div></div>
 </div>
 </div>
@@ -79,7 +157,32 @@
 
 ## 一、核心结论（月度核心汇总）
 
-{{ report_note("摘要", "本月核心结论", "本月整体库销比：" ~ core_summary.ratio_text ~ "，库销比目标值：<strong>2.0</strong><br>趋势判断：" ~ core_summary.trend_text ~ "<br>核心问题：" ~ core_summary.problem_text ~ "<br>管理动作：" ~ core_summary.action_text, "accent") }}
+{{ report_note("总体判断", "库存与趋势判断", inventory_management_conclusion, "accent") }}
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:stretch;">
+<div style="height:100%;">
+{{ report_note("地区焦点", "大区与结构风险", regional_management_conclusion ~ "<br>" ~ model_management_conclusion, "warning") }}
+</div>
+<div style="height:100%;">
+{{ report_note("专项焦点", "订购与终端执行", purchase_management_conclusion ~ "<br>" ~ order_control_management_conclusion, "warning") }}
+</div>
+</div>
+
+{% if priority_action_groups %}
+### 本月优先执行事项
+
+<div style="display:grid;grid-template-columns:repeat({{ priority_action_groups | length }},minmax(0,1fr));gap:12px;align-items:stretch;margin-bottom:12px;">
+{% for group in priority_action_groups %}
+{{ action_group_header(group) }}
+{% endfor %}
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;align-items:stretch;">
+{% for item in priority_action_preview_grid_items %}
+{{ priority_action_card(item) }}
+{% endfor %}
+</div>
+{% endif %}
 
 ---
 
@@ -212,31 +315,31 @@
 | 排名 | 大区 | 综合得分 | 使用合规率得分 | 库存健康度得分 | 状态 |
 |---|---|---|---|---|---|
 {% for row in diagnosis_ranking %}
-| {{ loop.index }} | {{ row.region }} | {{ row.composite_score }}分 | {{ row.usage_compliance_score }}分 | {{ row.inventory_health_score }}分 | {{ row.status }} |
+| {{ strong_value(loop.index) }} | {{ strong_value(row.region) }} | {{ strong_value(row.composite_score ~ '分') }} | {{ strong_value(row.usage_compliance_score ~ '分') }} | {{ strong_value(row.inventory_health_score ~ '分') }} | {{ inline_badge(row.status, 'green' if '绿灯' in row.status else 'yellow' if '黄灯' in row.status else 'red' if '红灯' in row.status else 'neutral') }} |
 {% endfor %}
 {% if not diagnosis_ranking %}
 | 本期无诊断数据 | - | - | - | - | - |
 {% endif %}
 
 {% if diagnosis.summary_sentence %}
-**一句话概述**：{{ diagnosis.summary_sentence }}
+**一句话概述**：{{ diagnosis.summary_sentence | emphasize_text | rich_text | safe }}
 {% endif %}
 
 {% if problem_light_details %}
 {% for detail in problem_light_details %}
-### {{ detail.status }} {{ detail.region }}（综合得分：{{ detail.composite_score }}分）
+### {{ inline_badge(detail.status, 'green' if '绿灯' in detail.status else 'yellow' if '黄灯' in detail.status else 'red' if '红灯' in detail.status else 'neutral') }} {{ detail.region }}（综合得分：{{ strong_value(detail.composite_score ~ '分') }}）
 
-**使用合规率得分：{{ detail.usage_compliance_score }}分 | 库存健康度得分：{{ detail.inventory_health_score }}分**
+**使用合规率得分：{{ strong_value(detail.usage_compliance_score ~ '分') }} | 库存健康度得分：{{ strong_value(detail.inventory_health_score ~ '分') }}**
 
 **使用合规诊断**
 
-- {{ detail.usage_diagnosis.severity }} **{{ detail.usage_diagnosis.label }}**：{{ detail.usage_diagnosis.summary }}
+- {{ detail.usage_diagnosis.severity }} **{{ detail.usage_diagnosis.label }}**：{{ detail.usage_diagnosis.summary | emphasize_text | rich_text | safe }}
 
 {% if detail.stock_diagnosis.findings %}
 **库存健康诊断**
 
 {% for finding in detail.stock_diagnosis.findings %}
-- {{ finding.severity }} **{{ finding.label }}**：{{ finding.summary }}
+- {{ finding.severity }} **{{ finding.label }}**：{{ finding.summary | emphasize_text | rich_text | safe }}
 {% endfor %}
 {% endif %}
 
@@ -246,7 +349,7 @@
 | 尺码 | 理论占比 | 实际占比 | 标准化期望用量 | 实际用量 | 原始偏差率 | 超容忍偏差 | 尺码得分 |
 |---|---|---|---:|---:|---|---|---|
 {% for p in detail.usage_problems %}
-| **{{ p.size }}** | {{ p.theory_ratio_pct }} | {{ p.actual_ratio_pct }} | {{ p.expected_actual_qty }} | {{ p.actual_qty }} | {{ p.deviation_rate_pct }} | {{ p.adjusted_deviation_rate_pct }} | {{ p.size_score }}分 |
+| {{ strong_value(p.size) }} | {{ strong_value(p.theory_ratio_pct) }} | {{ strong_value(p.actual_ratio_pct) }} | {{ strong_value(p.expected_actual_qty) }} | {{ strong_value(p.actual_qty) }} | {{ strong_value(p.deviation_rate_pct) }} | {{ strong_value(p.adjusted_deviation_rate_pct) }} | {{ strong_value(p.size_score ~ '分') }} |
 {% endfor %}
 {% endif %}
 
@@ -256,7 +359,7 @@
 | 问题类型 | 尺码 | 库存占比 | 理论需求占比 | 原始偏差 | 超容忍偏差 | 库存深度（月） | 库存量 |
 |---|---|---|---|---|---|---:|---:|
 {% for p in detail.stock_problems %}
-| {{ p.problem_type }} | **{{ p.size }}** | {{ p.stock_ratio_pct }} | {{ p.theory_ratio_pct }} | {{ p.diff_pct }} | {{ p.adjusted_diff_pct }} | {{ p.inventory_depth_months }} | {{ p.stock_qty }} |
+| {{ p.problem_type }} | {{ strong_value(p.size) }} | {{ strong_value(p.stock_ratio_pct) }} | {{ strong_value(p.theory_ratio_pct) }} | {{ strong_value(p.diff_pct) }} | {{ strong_value(p.adjusted_diff_pct) }} | {{ strong_value(p.inventory_depth_months) }} | {{ strong_value(p.stock_qty) }} |
 {% endfor %}
 {% endif %}
 
@@ -264,7 +367,7 @@
 **优先行动**
 
 {% for action in detail.priority_actions %}
-{{ loop.index }}. {{ action }}
+{{ loop.index }}. {{ action | emphasize_text | rich_text | safe }}
 {% endfor %}
 {% endif %}
 
@@ -277,14 +380,14 @@
 | 大区 | 综合得分 | 使用问题 | 库存问题 | 建议 |
 |---|---|---|---|---|
 {% for row in yellow_light_summary %}
-| {{ row.region }} | {{ row.composite_score }}分 | {{ row.usage_issue }} | {{ row.stock_issue }} | {{ row.suggestion }} |
+| {{ strong_value(row.region) }} | {{ strong_value(row.composite_score ~ '分') }} | {{ inline_badge(row.usage_issue, 'yellow') }} | {{ inline_badge(row.stock_issue, 'orange' if '库存无法支持合理使用' in row.stock_issue or '库存结构不科学' in row.stock_issue else 'yellow') }} | {{ row.suggestion | emphasize_text | rich_text | safe }} |
 {% endfor %}
 {% endif %}
 
 {% if diagnosis.green_count %}
 ### 绿灯大区
 
-配置与使用基本合理，持续跟踪。当前共 {{ diagnosis.green_count }} 个大区处于绿灯状态。
+配置与使用基本合理，持续跟踪。当前共 **{{ diagnosis.green_count }}** 个大区处于**绿灯**状态。
 {% endif %}
 
 ---
@@ -295,24 +398,34 @@
 
 {{ report_note("分级标准", "P1/P2判定口径", ai_priority_standard, "neutral") }}
 
-### P1 最高优先级（含中高风险）
-
-| 区域 | 问题类型 | 重点型号 | 优先级判定依据 | 关键依据 | 行动清单（型号/动作/数量） | 下月复盘指标 |
-|---|---|---|---|---|---|---|
-{% for item in ai_actions_p1 %}
-| {{ item.region }} | {{ item.issue_type_label }} | {{ item.focus_models|join('、') if item.focus_models else '非型号问题' }} | {{ item.priority_reason if item.priority_reason else item.priority_rule }} | {{ item.root_cause_multiline if item.root_cause_multiline else '待补充' }} | {{ item.business_plan if item.business_plan else '待补充' }} | {{ item.review_metric_text }} |
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:10px 0 12px 0;">
+{% for group in ai_action_overview_groups %}
+{{ summary_card(group.label, group.count_label, group.issue_snapshot if group.issue_snapshot else group.empty_message, group.tone if group.tone != 'yellow' else 'yellow') }}
 {% endfor %}
-{% if not ai_actions_p1 %}
-| 本期无P1重点区域 | 无 | 无 | 无 | 无 | 持续监控 | 下月持续复盘 |
+</div>
+
+### P1 重点动作
+
+{% for group in ai_p1_action_groups %}
+{{ action_group_header(group) }}
+
+{% if group["items"] %}
+{{ ai_action_table(group["items"], 'P1', 'red') }}
+{% else %}
+{{ report_note("状态", group.label, group.empty_message, "neutral") }}
 {% endif %}
 
-### P2 常规优先级
-
-| 区域 | 问题类型 | 重点型号 | 优先级判定依据 | 关键依据 | 行动清单（型号/动作/数量） | 下月复盘指标 |
-|---|---|---|---|---|---|---|
-{% for item in ai_actions_p2 %}
-| {{ item.region }} | {{ item.issue_type_label }} | {{ item.focus_models|join('、') if item.focus_models else '非型号问题' }} | {{ item.priority_reason if item.priority_reason else item.priority_rule }} | {{ item.root_cause_multiline if item.root_cause_multiline else '待补充' }} | {{ item.business_plan if item.business_plan else '待补充' }} | {{ item.review_metric_text }} |
 {% endfor %}
-{% if not ai_actions_p2 %}
-| 本期无P2常规问题 | 无 | 无 | 无 | 无 | 持续监控 | 下月持续复盘 |
+
+### P2 常规动作
+
+{% for group in ai_p2_action_groups %}
+{{ action_group_header(group) }}
+
+{% if group["items"] %}
+{{ ai_action_table(group["items"], 'P2', 'yellow') }}
+{% else %}
+{{ report_note("状态", group.label, group.empty_message, "neutral") }}
 {% endif %}
+
+{% endfor %}

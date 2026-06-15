@@ -25,6 +25,7 @@ class ReportService:
             lstrip_blocks=True,
         )
         self.env.filters["rich_text"] = self._render_rich_text
+        self.env.filters["emphasize_text"] = self._emphasize_text
 
     def render(
         self,
@@ -81,7 +82,9 @@ class ReportService:
             {
                 **item,
                 "root_cause_multiline": item.get("root_cause_multiline") or self._format_numbered_multiline_text(item.get("root_cause", "")),
-                "issue_type_label": item.get("issue_type_label") or self._describe_ai_issue_type(item),
+                "issue_type_label": self._normalize_ai_issue_type_label(
+                    item.get("issue_type_label") or self._describe_ai_issue_type(item)
+                ),
                 "priority_reason": item.get("priority_reason") or self._build_ai_priority_reason_text(item),
                 "priority_rule": item.get("priority_rule") or self._build_ai_priority_rule_text(item),
                 "review_metric_text": item.get("review_metric_text") or self._build_ai_review_metric_text(item),
@@ -95,6 +98,10 @@ class ReportService:
             f"P2优先级{sum(1 for item in ai_display_actions if item.get('priority') == 'P2')}个。"
             if ai_display_actions
             else "本期未识别到需要展示的P1、P2级AI洞察。"
+        )
+        priority_inventory_items, priority_usage_items, priority_terminal_items = self._split_priority_action_groups(
+            ai_display_actions,
+            max_per_group=2,
         )
         thresholds = report_facts.get("thresholds", {})
         inventory_green_max = float(thresholds.get("inventory_green_max", 2.5))
@@ -157,6 +164,52 @@ class ReportService:
         previous_month = self._previous_month(context.report_month)
         ai_actions_p1 = [item for item in ai_display_actions if item.get("priority") == "P1"]
         ai_actions_p2 = [item for item in ai_display_actions if item.get("priority") == "P2"]
+        ai_inventory_actions_p1, ai_usage_actions_p1, ai_terminal_actions_p1 = self._split_priority_action_groups(
+            ai_actions_p1,
+            max_per_group=None,
+        )
+        ai_inventory_actions_p2, ai_usage_actions_p2, ai_terminal_actions_p2 = self._split_priority_action_groups(
+            ai_actions_p2,
+            max_per_group=None,
+        )
+        priority_action_groups = self._build_priority_action_group_metas(
+            inventory_preview_items=priority_inventory_items,
+            usage_preview_items=priority_usage_items,
+            terminal_preview_items=priority_terminal_items,
+            inventory_all_items=ai_inventory_actions_p1 + ai_inventory_actions_p2,
+            usage_all_items=ai_usage_actions_p1 + ai_usage_actions_p2,
+            terminal_all_items=ai_terminal_actions_p1 + ai_terminal_actions_p2,
+        )
+        ai_action_overview_groups = self._build_priority_action_group_metas(
+            inventory_preview_items=ai_inventory_actions_p1 + ai_inventory_actions_p2,
+            usage_preview_items=ai_usage_actions_p1 + ai_usage_actions_p2,
+            terminal_preview_items=ai_terminal_actions_p1 + ai_terminal_actions_p2,
+            inventory_all_items=ai_inventory_actions_p1 + ai_inventory_actions_p2,
+            usage_all_items=ai_usage_actions_p1 + ai_usage_actions_p2,
+            terminal_all_items=ai_terminal_actions_p1 + ai_terminal_actions_p2,
+            include_empty_groups=True,
+        )
+        ai_p1_action_groups = self._build_priority_action_group_metas(
+            inventory_preview_items=ai_inventory_actions_p1,
+            usage_preview_items=ai_usage_actions_p1,
+            terminal_preview_items=ai_terminal_actions_p1,
+            inventory_all_items=ai_inventory_actions_p1,
+            usage_all_items=ai_usage_actions_p1,
+            terminal_all_items=ai_terminal_actions_p1,
+            include_empty_groups=True,
+            scope_label="P1",
+        )
+        ai_p2_action_groups = self._build_priority_action_group_metas(
+            inventory_preview_items=ai_inventory_actions_p2,
+            usage_preview_items=ai_usage_actions_p2,
+            terminal_preview_items=ai_terminal_actions_p2,
+            inventory_all_items=ai_inventory_actions_p2,
+            usage_all_items=ai_usage_actions_p2,
+            terminal_all_items=ai_terminal_actions_p2,
+            include_empty_groups=True,
+            scope_label="P2",
+        )
+        priority_action_preview_grid_items = self._build_priority_action_preview_grid_items(priority_action_groups)
         core_summary = self._build_core_summary(
             inventory_overview=inventory_overview,
             regional_rows=regional_rows,
@@ -185,7 +238,15 @@ class ReportService:
         diagnosis_ranking = diagnosis.get("diagnosis_ranking", [])
         red_light_details = diagnosis.get("red_light_details", [])
         problem_light_details = diagnosis.get("problem_light_details", red_light_details)
-        yellow_light_summary = diagnosis.get("yellow_light_summary", [])
+        yellow_light_summary = [
+            {
+                **row,
+                "usage_issue": self._dedupe_delimited_text(row.get("usage_issue"), fallback="使用基本合规"),
+                "stock_issue": self._dedupe_delimited_text(row.get("stock_issue"), fallback="库存基本合理"),
+                "suggestion": self._dedupe_delimited_text(row.get("suggestion"), fallback="持续跟踪"),
+            }
+            for row in diagnosis.get("yellow_light_summary", [])
+        ]
         diagnosis_management_conclusion = self._build_diagnosis_management_conclusion(diagnosis)
 
         return {
@@ -268,7 +329,21 @@ class ReportService:
             "ai_display_actions": ai_display_actions,
             "ai_actions_p1": ai_actions_p1,
             "ai_actions_p2": ai_actions_p2,
+            "ai_inventory_actions_p1": ai_inventory_actions_p1,
+            "ai_usage_actions_p1": ai_usage_actions_p1,
+            "ai_terminal_actions_p1": ai_terminal_actions_p1,
+            "ai_inventory_actions_p2": ai_inventory_actions_p2,
+            "ai_usage_actions_p2": ai_usage_actions_p2,
+            "ai_terminal_actions_p2": ai_terminal_actions_p2,
             "ai_display_summary": ai_display_summary,
+            "priority_action_groups": priority_action_groups,
+            "priority_action_preview_grid_items": priority_action_preview_grid_items,
+            "ai_action_overview_groups": ai_action_overview_groups,
+            "ai_p1_action_groups": ai_p1_action_groups,
+            "ai_p2_action_groups": ai_p2_action_groups,
+            "priority_inventory_items": priority_inventory_items,
+            "priority_usage_items": priority_usage_items,
+            "priority_terminal_items": priority_terminal_items,
             "top_order_anomalies": top_order_anomalies,
             "top_regional_anomalies": top_regional_anomalies,
             "order_anomaly_empty_is_normal": order_anomaly_empty_is_normal,
@@ -612,6 +687,59 @@ class ReportService:
         text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
         text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
         return text.replace("\n", "<br>")
+
+    def _emphasize_text(self, value: Any) -> str:
+        text = str(value or "")
+        if not text:
+            return ""
+
+        normalized = text.replace("<br>", "\n")
+        placeholders: dict[str, str] = {}
+
+        def alpha_token(index: int) -> str:
+            result = ""
+            current = index
+            while True:
+                result = chr(65 + (current % 26)) + result
+                current = current // 26 - 1
+                if current < 0:
+                    break
+            return result
+
+        def protect(pattern: str, source: str) -> str:
+            def replacer(match: re.Match[str]) -> str:
+                token = f"ZZEMPH{alpha_token(len(placeholders))}ZZ"
+                placeholders[token] = match.group(0)
+                return token
+
+            return re.sub(pattern, replacer, source, flags=re.DOTALL)
+
+        protected = normalized
+        protected = protect(r"\*\*.*?\*\*", protected)
+        protected = protect(r"<strong\b[^>]*>.*?</strong>", protected)
+        protected = protect(r"<code\b[^>]*>.*?</code>", protected)
+        protected = protect(r"<[^>]+>", protected)
+        protected = re.sub(
+            r"(^|[\n；。])([ \t]*)([^：\n<>]{1,18}：)",
+            lambda match: f"{match.group(1)}{match.group(2)}**{match.group(3)}**",
+            protected,
+        )
+        protected = protect(r"\*\*.*?\*\*", protected)
+        for pattern in [
+            r"(?<![\d/\-])((?:>=|<=|>|<|±)\s*\d+(?:\.\d+)?)(?![\d/\-])",
+            r"(?<![\d/\-])(\d+\.\d+)(?![\d/\-])",
+            r"(?<![\d/\-])(\d+(?:%|个百分点|分|个地区型号|个地区|个大区|个型号|个|单|家|个月|月|天|倍|万|万元|元|条|项))(?![\d/\-])",
+        ]:
+            protected = re.sub(pattern, r"**\1**", protected)
+        protected = protect(r"\*\*.*?\*\*", protected)
+        protected = re.sub(
+            r"(红灯|黄灯|绿灯|P1|P2|P3|高风险|中风险|关注风险|补货压力|结构错配|异常订单|盘点损失|库存积压|库存短缺|优先处理|立即复核)",
+            r"**\1**",
+            protected,
+        )
+        for token, raw in placeholders.items():
+            protected = protected.replace(token, raw)
+        return protected.replace("\n", "<br>")
 
     def _generate_pdf(self, md_path: Path) -> None:
         pdf_path = md_path.with_suffix(".pdf")
@@ -1559,6 +1687,217 @@ class ReportService:
         if "stocktake" in action_types:
             return "盘点差异复核"
         return "综合优化"
+
+    def _normalize_ai_issue_type_label(self, value: Any) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        parts = [
+            re.sub(r"\s+", " ", part).strip()
+            for part in re.split(r"\s*(?:\+|/|｜|\||、|，|；)\s*", text)
+            if str(part).strip()
+        ]
+        normalized_parts: list[str] = []
+        seen: set[str] = set()
+        for part in parts:
+            if part in seen:
+                continue
+            seen.add(part)
+            normalized_parts.append(part)
+        return " + ".join(normalized_parts)
+
+    def _dedupe_delimited_text(self, value: Any, fallback: str = "") -> str:
+        text = str(value or "").strip()
+        if not text:
+            return fallback
+        parts = [
+            re.sub(r"[。]+$", "", part.strip())
+            for part in re.split(r"[；;]+", text)
+            if str(part).strip()
+        ]
+        deduped_parts: list[str] = []
+        seen: set[str] = set()
+        for part in parts:
+            if not part or part in seen:
+                continue
+            seen.add(part)
+            deduped_parts.append(part)
+        return "；".join(deduped_parts) if deduped_parts else fallback
+
+    def _build_priority_action_group_metas(
+        self,
+        *,
+        inventory_preview_items: list[dict[str, Any]],
+        usage_preview_items: list[dict[str, Any]],
+        terminal_preview_items: list[dict[str, Any]],
+        inventory_all_items: list[dict[str, Any]],
+        usage_all_items: list[dict[str, Any]],
+        terminal_all_items: list[dict[str, Any]],
+        include_empty_groups: bool = False,
+        scope_label: str = "",
+    ) -> list[dict[str, Any]]:
+        group_specs = [
+            {
+                "key": "inventory",
+                "label": "库销与库存类",
+                "tone": "blue",
+                "description": "聚焦库销超标、高库存去化、补货缺口和库存结构动作。",
+                "empty_message": f"本期暂无{scope_label + ' ' if scope_label else ''}库销与库存类重点动作，保持常规跟踪即可。",
+                "preview_items": inventory_preview_items,
+                "all_items": inventory_all_items,
+            },
+            {
+                "key": "usage",
+                "label": "纸袋使用合规类",
+                "tone": "orange",
+                "description": "聚焦大袋小用、尺码错配与纸袋使用合规动作。",
+                "empty_message": f"本期暂无{scope_label + ' ' if scope_label else ''}纸袋使用合规类重点动作，维持当前执行口径。",
+                "preview_items": usage_preview_items,
+                "all_items": usage_all_items,
+            },
+            {
+                "key": "terminal",
+                "label": "终端异常 / 盘点类",
+                "tone": "yellow",
+                "description": "聚焦异常订单、门店执行偏差与盘点差异整改。",
+                "empty_message": f"本期暂无{scope_label + ' ' if scope_label else ''}终端异常 / 盘点类重点动作，持续监控即可。",
+                "preview_items": terminal_preview_items,
+                "all_items": terminal_all_items,
+            },
+        ]
+        groups = [
+            self._build_priority_action_group_meta(
+                key=spec["key"],
+                label=spec["label"],
+                tone=spec["tone"],
+                description=spec["description"],
+                preview_items=spec["preview_items"],
+                all_items=spec["all_items"],
+                empty_message=spec["empty_message"],
+            )
+            for spec in group_specs
+        ]
+        if include_empty_groups:
+            return groups
+        return [group for group in groups if group["total_count"] > 0]
+
+    def _build_priority_action_group_meta(
+        self,
+        *,
+        key: str,
+        label: str,
+        tone: str,
+        description: str,
+        preview_items: list[dict[str, Any]],
+        all_items: list[dict[str, Any]],
+        empty_message: str,
+    ) -> dict[str, Any]:
+        total_count = len(all_items)
+        p1_count = sum(1 for item in all_items if item.get("priority") == "P1")
+        p2_count = sum(1 for item in all_items if item.get("priority") == "P2")
+        issue_labels: list[str] = []
+        for item in all_items:
+            label_text = self._normalize_ai_issue_type_label(item.get("issue_type_label"))
+            if label_text and label_text not in issue_labels:
+                issue_labels.append(label_text)
+        display_count = len(preview_items)
+        issue_snapshot = self._summarize_action_group_issue_snapshot(key, issue_labels)
+        return {
+            "key": key,
+            "label": label,
+            "tone": tone,
+            "description": description,
+            "items": preview_items,
+            "total_count": total_count,
+            "display_count": display_count,
+            "count_label": f"{total_count}项重点动作" if total_count else "0项重点动作",
+            "priority_mix": f"P1 {p1_count}项 / P2 {p2_count}项" if total_count else "本期无重点动作",
+            "issue_snapshot": issue_snapshot,
+            "display_hint": (
+                f"当前仅展示前{display_count}项，完整清单见第七部分。"
+                if total_count and display_count and display_count < total_count
+                else ""
+            ),
+            "empty_message": empty_message,
+        }
+
+    def _build_priority_action_preview_grid_items(self, groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        preview_items: list[dict[str, Any]] = []
+        for group in groups:
+            for item in group.get("items", []):
+                preview_items.append(
+                    {
+                        **item,
+                        "group_label": group.get("label", ""),
+                        "group_tone": group.get("tone", "neutral"),
+                    }
+                )
+        return preview_items
+
+    def _summarize_action_group_issue_snapshot(self, key: str, issue_labels: list[str]) -> str:
+        if not issue_labels:
+            return ""
+        if key == "usage":
+            parts: list[str] = []
+            for label in issue_labels:
+                for part in label.split(" + "):
+                    normalized = part.strip()
+                    if normalized and normalized not in parts:
+                        parts.append(normalized)
+            summary_parts: list[str] = []
+            if any("大袋小用" in part for part in parts):
+                summary_parts.append("大袋小用")
+            elif parts:
+                summary_parts.append(parts[0])
+            inventory_parts = [part for part in parts if "库存" in part]
+            if inventory_parts:
+                summary_parts.append("库存健康问题" if len(inventory_parts) > 1 else inventory_parts[0])
+            return "、".join(summary_parts[:2])
+        return "、".join(issue_labels[:2])
+
+    def _split_priority_action_groups(
+        self,
+        items: list[dict[str, Any]],
+        max_per_group: int | None = 2,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+        inventory_items: list[dict[str, Any]] = []
+        usage_items: list[dict[str, Any]] = []
+        terminal_items: list[dict[str, Any]] = []
+        for item in items:
+            group = self._classify_priority_action_group(item)
+            if group == "usage":
+                if max_per_group is None or len(usage_items) < max_per_group:
+                    usage_items.append(item)
+            elif group == "terminal":
+                if max_per_group is None or len(terminal_items) < max_per_group:
+                    terminal_items.append(item)
+            else:
+                if max_per_group is None or len(inventory_items) < max_per_group:
+                    inventory_items.append(item)
+        return inventory_items, usage_items, terminal_items
+
+    def _classify_priority_action_group(self, item: dict[str, Any]) -> str:
+        label = str(item.get("issue_type_label") or "")
+        action_details = item.get("action_details", []) if isinstance(item, dict) else []
+        action_types = {detail.get("type") for detail in action_details if isinstance(detail, dict)}
+
+        usage_keywords = ("大袋小用", "使用", "合规")
+        terminal_keywords = ("终端", "异常订单", "盘点")
+        inventory_keywords = ("库存", "库销", "补货", "缺口", "高库存")
+
+        if any(keyword in label for keyword in usage_keywords):
+            return "usage"
+        if "diagnosis" in action_types:
+            return "usage"
+        if any(keyword in label for keyword in terminal_keywords):
+            return "terminal"
+        if action_types & {"order_anomaly", "stocktake"}:
+            return "terminal"
+        if any(keyword in label for keyword in inventory_keywords):
+            return "inventory"
+        if action_types & {"overstock", "shortage", "shortage_buffer"}:
+            return "inventory"
+        return "inventory"
 
     def _build_ai_review_metric_text(self, item: dict[str, Any]) -> str:
         baseline = item.get("baseline", {}) if isinstance(item, dict) else {}
