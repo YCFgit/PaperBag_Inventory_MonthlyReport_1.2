@@ -58,7 +58,11 @@ class RegionDiagnosis:
         for name, metric in self.size_metrics:
             if metric.theory_ratio <= 0:
                 continue
-            if DiagnosisService._is_usage_problem(metric, rate_threshold=0.2, gap_threshold=0.03):
+            if DiagnosisService._is_usage_problem(
+                metric,
+                rate_threshold=DiagnosisService.USAGE_TOLERANCE_RATE,
+                gap_threshold=0.0,
+            ):
                 direction = "占比偏高" if metric.usage_ratio_gap > 0 else "占比偏低"
                 problems.append({
                     "size": name.upper(),
@@ -76,7 +80,7 @@ class RegionDiagnosis:
             if metric.theory_ratio <= 0 and metric.stock_ratio <= 0:
                 continue
             diff_pp = abs(metric.stock_ratio - metric.theory_ratio)
-            if diff_pp >= 0.15:
+            if diff_pp >= DiagnosisService.STOCK_TOLERANCE_PP:
                 direction = "库存过剩" if metric.stock_ratio > metric.theory_ratio else "库存不足"
                 problems.append({
                     "size": name.upper(),
@@ -93,8 +97,7 @@ class DiagnosisService:
 
     理论需求来自诊断 SQL/CSV；实际消耗和期末库存优先来自
     a597c4441b7414c93a7c502d 卡片的地区×型号明细，按大区×月份×型号
-    透视后计算综合健康度得分。旧版实际消耗/月末库存 SQL 仅作为无卡片
-    数据时的兜底输入。
+    透视后计算综合健康度得分。运行时不再读取本地实际消耗/月末库存文件。
     """
 
     SIZES = ("xs", "s", "m", "l", "xl")
@@ -112,10 +115,10 @@ class DiagnosisService:
     }
     SQL_DIR = Path(__file__).resolve().parent.parent.parent / "config" / "sql"
     INPUT_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "input_data"
-    USAGE_TOLERANCE_RATE = 0.15
-    STOCK_TOLERANCE_PP = 0.05
+    USAGE_TOLERANCE_RATE = 0.10
+    STOCK_TOLERANCE_PP = 0.10
     USAGE_SCORE_FACTOR = 150.0
-    INVENTORY_SUPPORT_MONTH_MIN = 0.5
+    INVENTORY_SUPPORT_MONTH_MIN = 1.0
     INVENTORY_OVERSTOCK_MONTH_MAX = 2.0
     THEORETICAL_DEMAND_SHARE_MIN = 0.10
     PRICE_BY_SIZE = {
@@ -238,6 +241,14 @@ class DiagnosisService:
 
         return actual_rows, stock_rows
 
+    def extract_model_card_rows(self, dataset: Any) -> list[dict[str, Any]]:
+        """优先从原始 API payload 提取 a597 行，避免读取被本地月对齐替换后的 rows。"""
+        raw_payload = getattr(dataset, "raw_payload", {}) or {}
+        raw_rows = self._extract_rows_from_raw_payload(raw_payload)
+        if raw_rows:
+            return raw_rows
+        return list(getattr(dataset, "rows", []) or [])
+
     def load_and_render_sql(self, sql_filename: str, report_month: str) -> str:
         """加载 SQL 模板并替换 ${report_month} 占位符。"""
         sql_path = self.SQL_DIR / sql_filename
@@ -305,6 +316,54 @@ class DiagnosisService:
             else:
                 normalized[clean_key] = clean_value
         return normalized
+
+    @classmethod
+    def _extract_rows_from_raw_payload(cls, raw_payload: dict[str, Any]) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for page in raw_payload.get("pages", []) or []:
+            rows.extend(cls._extract_rows_from_page(page))
+        return rows
+
+    @classmethod
+    def _extract_rows_from_page(cls, page: dict[str, Any]) -> list[dict[str, Any]]:
+        data = page.get("data")
+        result = page.get("result")
+        candidates = [
+            page.get("rows"),
+            data.get("rows") if isinstance(data, dict) else None,
+            data.get("rowList") if isinstance(data, dict) else None,
+            result.get("rows") if isinstance(result, dict) else None,
+            data.get("list") if isinstance(data, dict) else None,
+            page.get("list"),
+        ]
+        for candidate in candidates:
+            if isinstance(candidate, list):
+                return [cls._normalize_card_row(row) for row in candidate if isinstance(row, dict)]
+        return []
+
+    @classmethod
+    def _normalize_card_row(cls, row: dict[str, Any]) -> dict[str, Any]:
+        normalized: dict[str, Any] = {}
+        for key, value in row.items():
+            normalized[str(key).strip()] = cls._normalize_card_value(value)
+        return normalized
+
+    @staticmethod
+    def _normalize_card_value(value: Any) -> Any:
+        if isinstance(value, str):
+            stripped = value.strip().replace(",", "")
+            if stripped.endswith("%"):
+                try:
+                    return float(stripped[:-1]) / 100
+                except ValueError:
+                    return value.strip()
+            try:
+                if "." in stripped:
+                    return float(stripped)
+                return int(stripped)
+            except ValueError:
+                return value.strip()
+        return value
 
     @staticmethod
     def _diagnosis_rank_key(diagnosis: RegionDiagnosis) -> tuple[int, float, str]:
@@ -609,6 +668,48 @@ class DiagnosisService:
     def _price(cls, size_name: str) -> float:
         return float(cls.PRICE_BY_SIZE.get(size_name.lower(), 0.0))
 
+    @staticmethod
+    def _format_percent(value: float) -> str:
+        return f"{value * 100:.1f}%"
+
+    @classmethod
+    def _adjusted_usage_qty(cls, metric: RegionSizeMetrics) -> float:
+        if metric.expected_actual_qty <= 0:
+            return max(0.0, float(metric.actual_qty))
+        return max(0.0, metric.expected_actual_qty * metric.adjusted_deviation_rate)
+
+    @classmethod
+    def _usage_fact_lines(
+        cls,
+        d: RegionDiagnosis,
+        *,
+        limit: int = 4,
+        include_stock_gap: bool = False,
+    ) -> list[str]:
+        focus_rows: list[tuple[str, RegionSizeMetrics]] = []
+        for size_name, metric in d.size_metrics:
+            if (
+                cls._is_usage_problem(metric, rate_threshold=cls.USAGE_TOLERANCE_RATE, gap_threshold=0.0)
+                or cls._is_stock_problem(metric)
+            ):
+                focus_rows.append((size_name, metric))
+        if not focus_rows:
+            return []
+
+        focus_rows.sort(key=lambda item: cls.SIZE_ORDER.get(item[0], 99))
+        lines: list[str] = []
+        for index, (size_name, metric) in enumerate(focus_rows[:limit], start=1):
+            line = (
+                f"{index}. {cls._size_label(size_name)}码：理论使用需求占比{cls._format_percent(metric.theory_ratio)}，"
+                f"实际使用占比{cls._format_percent(metric.actual_ratio)}，"
+                f"库存占比{cls._format_percent(metric.stock_ratio)}"
+            )
+            if include_stock_gap and metric.stock_qty > 0 and metric.theory_ratio > 0:
+                signed_gap = (metric.stock_ratio - metric.theory_ratio) * 100
+                line += f"，库存偏差{signed_gap:+.1f}个百分点"
+            lines.append(line)
+        return lines
+
     @classmethod
     def _build_usage_diagnosis(cls, d: RegionDiagnosis) -> dict[str, Any]:
         pairs: list[dict[str, Any]] = []
@@ -630,8 +731,8 @@ class DiagnosisService:
                 key=lambda item: cls.SIZE_ORDER.get(large_name, 99) - cls.SIZE_ORDER.get(item[0], 0),
             )
             substitute_qty = min(
-                max(0.0, large_metric.actual_qty - large_metric.expected_actual_qty),
-                max(0.0, smaller_metric.expected_actual_qty - smaller_metric.actual_qty),
+                cls._adjusted_usage_qty(large_metric),
+                cls._adjusted_usage_qty(smaller_metric),
             )
             extra_cost = substitute_qty * max(0.0, cls._price(large_name) - cls._price(smaller_name))
             pairs.append(
@@ -654,16 +755,47 @@ class DiagnosisService:
 
         if pairs:
             total_extra_cost = sum(item["extra_cost"] for item in pairs)
-            max_pair = max(pairs, key=lambda item: item["extra_cost"])
+            involved_under_sizes = sorted(
+                {
+                    item["from_size_label"]
+                    for item in pairs
+                    if next(
+                        (
+                            metric.usage_ratio_gap < 0
+                            for size_name, metric in d.size_metrics
+                            if cls._size_label(size_name) == item["from_size_label"]
+                        ),
+                        False,
+                    )
+                },
+                key=lambda item: cls.SIZE_ORDER.get(item.lower(), 99),
+            )
+            involved_over_sizes = sorted(
+                {
+                    item["to_size_label"]
+                    for item in pairs
+                },
+                key=lambda item: cls.SIZE_ORDER.get(item.lower(), 99),
+            )
+            under_text = "、".join(involved_under_sizes)
+            over_text = "、".join(involved_over_sizes)
+            headline = (
+                f"{under_text}码门店实际使用占比低于理论占比，{over_text}码实际使用占比偏高，"
+                "地区尺码订购与终端需求不匹配，存在大袋小用并带来额外费用。"
+                if under_text and over_text
+                else "地区纸袋尺码使用结构偏离理论配比，存在大袋小用并带来额外费用。"
+            )
+            fact_lines = cls._usage_fact_lines(d)
+            summary_parts = [headline]
+            if fact_lines:
+                summary_parts.append("<br>".join(fact_lines))
+            if total_extra_cost > 0:
+                summary_parts.append(f"剔除容忍区间后，月度额外成本约¥{round(total_extra_cost):,.0f}。")
             severity = "🔴" if total_extra_cost >= 300 or abs(d.composite_score) < 60 else "🟡"
             return {
                 "label": "大袋小用",
                 "severity": severity,
-                "summary": (
-                    f"{max_pair['summary']}，月度额外成本约¥{round(total_extra_cost):,.0f}。"
-                    if total_extra_cost > 0
-                    else f"{max_pair['summary']}。"
-                ),
+                "summary": "<br>".join(summary_parts),
                 "extra_cost": round(total_extra_cost, 2),
                 "details": pairs,
             }
@@ -676,27 +808,30 @@ class DiagnosisService:
         total_excess_qty = max(0.0, d.total_actual_qty - d.total_theory_qty)
         if small_overuse and (total_excess_qty > 0 or d.total_theory_qty and d.total_actual_qty / d.total_theory_qty > 1.5):
             extra_qty = min(
-                sum(max(0.0, metric.actual_qty - metric.expected_actual_qty) for _, metric in small_overuse),
+                sum(cls._adjusted_usage_qty(metric) for _, metric in small_overuse),
                 total_excess_qty if total_excess_qty > 0 else sum(metric.actual_qty for _, metric in small_overuse),
             )
             weighted_unit_cost = (
-                sum(max(0.0, metric.actual_qty - metric.expected_actual_qty) * cls._price(size_name) for size_name, metric in small_overuse)
+                sum(cls._adjusted_usage_qty(metric) * cls._price(size_name) for size_name, metric in small_overuse)
                 / max(
                     1.0,
-                    sum(max(0.0, metric.actual_qty - metric.expected_actual_qty) for _, metric in small_overuse),
+                    sum(cls._adjusted_usage_qty(metric) for _, metric in small_overuse),
                 )
             )
             extra_cost = extra_qty * weighted_unit_cost
             size_labels = "、".join(cls._size_label(size_name) for size_name, _ in small_overuse)
+            fact_lines = cls._usage_fact_lines(d)
+            summary_parts = [
+                f"{size_labels}码实际使用占比偏高，而大尺码配置低于理论需求，门店可能存在合包执行不足或拆分装袋。",
+            ]
+            if fact_lines:
+                summary_parts.append("<br>".join(fact_lines))
+            if extra_cost > 0:
+                summary_parts.append(f"剔除容忍区间后，月度额外成本约¥{round(extra_cost):,.0f}。")
             return {
-                "label": "未合并装袋（小袋多用）",
+                "label": "合包问题",
                 "severity": "🔴" if d.total_theory_qty and d.total_actual_qty / d.total_theory_qty > 1.5 else "🟡",
-                "summary": (
-                    f"{size_labels}码偏小尺码使用偏多，总实际消耗/总理论需求为"
-                    f"{(d.total_actual_qty / d.total_theory_qty):.2f}，月度额外成本约¥{round(extra_cost):,.0f}。"
-                    if d.total_theory_qty
-                    else f"{size_labels}码偏小尺码使用偏多。"
-                ),
+                "summary": "<br>".join(summary_parts),
                 "extra_cost": round(extra_cost, 2),
                 "details": [
                     {
@@ -713,7 +848,7 @@ class DiagnosisService:
         return {
             "label": "使用基本合规",
             "severity": "🟢",
-            "summary": "各型号实际使用结构与理论最优结构基本一致，偏差均在±15%宽容区间内。",
+            "summary": "各型号实际使用结构与理论最优结构基本一致，偏差均在±10%宽容区间内。",
             "extra_cost": 0.0,
             "details": [],
         }
@@ -722,11 +857,16 @@ class DiagnosisService:
     def _build_stock_diagnosis(cls, d: RegionDiagnosis) -> dict[str, Any]:
         blocking: list[dict[str, Any]] = []
         structure: list[dict[str, Any]] = []
+        structure_threshold = cls.STOCK_TOLERANCE_PP * 100
         for size_name, metric in d.size_metrics:
             if metric.theory_ratio < cls.THEORETICAL_DEMAND_SHARE_MIN:
                 continue
             signed_gap = metric.stock_ratio - metric.theory_ratio
-            if metric.inventory_depth_months < cls.INVENTORY_SUPPORT_MONTH_MIN and signed_gap < -cls.STOCK_TOLERANCE_PP:
+            is_blocking_understock = (
+                metric.inventory_depth_months < cls.INVENTORY_SUPPORT_MONTH_MIN
+                and signed_gap < -cls.STOCK_TOLERANCE_PP
+            )
+            if is_blocking_understock:
                 blocking.append(
                     {
                         "label": "库存无法支持合理使用",
@@ -739,9 +879,9 @@ class DiagnosisService:
                     }
                 )
             if (
-                d.inventory_structure_deviation > 5
+                d.inventory_structure_deviation > structure_threshold
                 or (metric.inventory_depth_months > cls.INVENTORY_OVERSTOCK_MONTH_MAX and signed_gap > cls.STOCK_TOLERANCE_PP)
-                or signed_gap < -cls.STOCK_TOLERANCE_PP
+                or (signed_gap < -cls.STOCK_TOLERANCE_PP and not is_blocking_understock)
             ):
                 if signed_gap > cls.STOCK_TOLERANCE_PP:
                     structure.append(
@@ -755,7 +895,7 @@ class DiagnosisService:
                             ),
                         }
                     )
-                elif signed_gap < -cls.STOCK_TOLERANCE_PP:
+                elif signed_gap < -cls.STOCK_TOLERANCE_PP and not is_blocking_understock:
                     structure.append(
                         {
                             "label": "库存结构不科学",
@@ -768,12 +908,12 @@ class DiagnosisService:
                         }
                     )
 
-        if not blocking and not structure and d.inventory_structure_deviation <= 5:
+        if not blocking and not structure and d.inventory_structure_deviation <= structure_threshold:
             findings = [
                 {
                     "label": "库存基本合理",
                     "severity": "🟢",
-                    "summary": "库存结构偏差度未超过5%，主要尺码库存能够支撑常规使用。",
+                    "summary": f"库存结构偏差度未超过{int(structure_threshold)}%，主要尺码库存能够支撑常规使用。",
                 }
             ]
         else:
@@ -816,10 +956,27 @@ class DiagnosisService:
         if overstock_sizes:
             actions.append(f"暂停或压降{'、'.join(overstock_sizes[:3])}码订购，优先调拨与消化存量。")
         usage_label = usage_diagnosis.get("label")
+        usage_problem_sizes = [
+            cls._size_label(name)
+            for name, metric in d.size_metrics
+            if cls._is_usage_problem(metric, rate_threshold=cls.USAGE_TOLERANCE_RATE, gap_threshold=0.0)
+        ]
+        overused_sizes = [
+            cls._size_label(name)
+            for name, metric in d.size_metrics
+            if cls._is_usage_problem(metric, rate_threshold=cls.USAGE_TOLERANCE_RATE, gap_threshold=0.0)
+            and metric.usage_ratio_gap > 0
+        ]
+        underused_sizes = [size for size in usage_problem_sizes if size not in overused_sizes]
         if usage_label == "大袋小用":
-            actions.append("库存补齐后限制偏大尺码替代小尺码，复盘门店领用审批。")
-        elif usage_label == "未合并装袋（小袋多用）":
-            actions.append("复核订单合包执行，减少偏小尺码拆分装袋。")
+            if overused_sizes and underused_sizes:
+                actions.append(
+                    f"复盘{'、'.join(overused_sizes[:3])}码替代{'、'.join(underused_sizes[:3])}码的场景，按理论配比纠偏，避免大袋小用。"
+                )
+            else:
+                actions.append("复盘门店领用与订购配比，压降偏大尺码替代使用。")
+        elif usage_label == "合包问题":
+            actions.append("复核合包规则与门店执行，减少偏小尺码拆分装袋。")
         elif d.composite_score < 85:
             actions.append("持续复核理论配比与门店业务场景，防止偏差进一步扩大。")
         return actions[:3]
@@ -1040,7 +1197,8 @@ class DiagnosisService:
             parts.append(f"其中{len(red)}个大区得分低于70分（{regions}），需要重点关注。")
         if yellow:
             parts.append(f"{len(yellow)}个大区得分在70-84分之间，有一定偏差需跟踪。")
-        parts.append(f"{len(green)}个大区得分85分以上，运行正常。")
+        if green:
+            parts.append(f"{len(green)}个大区得分85分以上，运行正常。")
         if red:
             usage_labels = {str((d.usage_diagnosis or {}).get("label", "")) for d in red}
             stock_labels = {
@@ -1061,7 +1219,6 @@ class DiagnosisService:
             usage_diagnosis = d.usage_diagnosis or self._build_usage_diagnosis(d)
             stock_diagnosis = d.stock_diagnosis or self._build_stock_diagnosis(d)
             focus_models: list[str] = []
-            reason_parts: list[str] = []
             action_lines = self._build_priority_actions(d, usage_diagnosis, stock_diagnosis)
             severity = 0
 
@@ -1069,7 +1226,6 @@ class DiagnosisService:
             for name, metric in d.size_metrics:
                 if self._is_usage_problem(metric, rate_threshold=0.5, gap_threshold=0.05):
                     focus_models.append(name.upper())
-                    reason_parts.append(self._usage_reason(name, metric))
                     severity += 2 if abs(metric.deviation_rate) >= 1.0 else 1
 
             # 库存端问题
@@ -1077,19 +1233,20 @@ class DiagnosisService:
                 diff_pp = abs(metric.stock_ratio - metric.theory_ratio)
                 if metric.theory_ratio > 0 and diff_pp >= 0.2:
                     focus_models.append(name.upper())
-                    if metric.stock_ratio > metric.theory_ratio:
-                        reason_parts.append(
-                            f"{name.upper()}码库存占比{metric.stock_ratio * 100:.1f}%，"
-                            f"理论需求占比{metric.theory_ratio * 100:.1f}%，备多了{diff_pp * 100:.0f}个百分点"
-                        )
-                    else:
-                        reason_parts.append(
-                            f"{name.upper()}码库存占比{metric.stock_ratio * 100:.1f}%，"
-                            f"理论需求占比{metric.theory_ratio * 100:.1f}%，备少了{diff_pp * 100:.0f}个百分点，有断货风险"
-                        )
                     severity += 2 if diff_pp >= 0.3 else 1
 
-            if not reason_parts:
+            root_cause_lines = []
+            usage_summary = str(usage_diagnosis.get("summary", "")).strip()
+            if usage_summary and usage_diagnosis.get("label") != "使用基本合规":
+                root_cause_lines.append(usage_summary)
+            root_cause_lines.extend(
+                item.get("summary", "")
+                for item in stock_diagnosis.get("findings", [])
+                if item.get("label") != "库存基本合理" and item.get("summary")
+            )
+            root_cause_lines = list(dict.fromkeys(line for line in root_cause_lines if line))
+
+            if not root_cause_lines:
                 continue
 
             focus_models = list(dict.fromkeys(focus_models))  # 去重保序
@@ -1102,7 +1259,7 @@ class DiagnosisService:
             priority_reason = (
                 f"{priority}判定：健康度综合得分{d.composite_score}分；"
                 f"使用合规得分{d.usage_compliance_score}分；库存健康得分{d.inventory_health_score}分；"
-                f"触发问题{len(reason_parts)}项"
+                f"触发问题{len(root_cause_lines)}项"
             )
 
             stock_labels = [
@@ -1127,8 +1284,8 @@ class DiagnosisService:
                 "issue_type": issue_type,
                 "issue_type_label": issue_type,
                 "focus_models": focus_models,
-                "root_cause": "；".join(reason_parts + [str(usage_diagnosis.get("summary", ""))] + [item.get("summary", "") for item in stock_diagnosis.get("findings", []) if item.get("label") != "库存基本合理"]),
-                "root_cause_multiline": "<br>".join(reason_parts + [str(usage_diagnosis.get("summary", ""))] + [item.get("summary", "") for item in stock_diagnosis.get("findings", []) if item.get("label") != "库存基本合理"]),
+                "root_cause": "；".join(root_cause_lines),
+                "root_cause_multiline": "<br>".join(root_cause_lines),
                 "business_plan": "<br>".join(action_lines),
                 "action_details": [
                     {"type": "diagnosis", "action": line, "source": "健康度诊断"}

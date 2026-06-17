@@ -300,8 +300,31 @@ def test_emphasize_text_does_not_double_wrap_priority_labels(tmp_path: Path) -> 
 
     assert "****" not in emphasized
     assert "**P1判定：**" in emphasized
-    assert "**46.32**" in emphasized
+    assert "**46.32分**" in emphasized
     assert "**6项**" in emphasized
+
+
+def test_emphasize_text_keeps_signed_decimal_with_unit_intact(tmp_path: Path) -> None:
+    template_path = tmp_path / "report_template.md.j2"
+    template_path.write_text("# {{ title }}\n", encoding="utf-8")
+    service = ReportService(template_path, DummyLogger())
+
+    emphasized = service._emphasize_text("S码库存深度0.13月，库存偏差-36.6个百分点，需在后续订购中补齐。")
+
+    assert "-36.<strong>" not in service._render_rich_text(emphasized)
+    assert "**-36.6个百分点**" in emphasized
+    assert "**0.13月**" in emphasized
+
+
+def test_emphasize_text_keeps_month_and_percentage_point_units_intact(tmp_path: Path) -> None:
+    template_path = tmp_path / "report_template.md.j2"
+    template_path.write_text("# {{ title }}\n", encoding="utf-8")
+    service = ReportService(template_path, DummyLogger())
+
+    emphasized = service._emphasize_text("目标库存深度≥1个月；仅对超出 ±10个百分点宽容区间的部分计入错配度。")
+
+    assert "≥**1个月**" in emphasized
+    assert "**±10个百分点**" in emphasized
 
 
 def test_normalize_ai_issue_type_label_deduplicates_repeated_problem_tags(tmp_path: Path) -> None:
@@ -372,6 +395,48 @@ def test_build_priority_action_group_meta_contains_counts_and_display_hint(tmp_p
     assert group["priority_mix"] == "P1 2项 / P2 1项"
     assert group["display_hint"] == "当前仅展示前2项，完整清单见第七部分。"
     assert group["issue_snapshot"] == "大袋小用、库存健康问题"
+
+
+def test_build_priority_action_group_meta_uses_empty_count_label_when_no_items(tmp_path: Path) -> None:
+    template_path = tmp_path / "report_template.md.j2"
+    template_path.write_text("# {{ title }}\n", encoding="utf-8")
+    service = ReportService(template_path, DummyLogger())
+
+    group = service._build_priority_action_group_meta(
+        key="terminal",
+        label="终端异常 / 盘点类",
+        tone="yellow",
+        description="聚焦异常订单、门店执行偏差与盘点差异整改。",
+        preview_items=[],
+        all_items=[],
+        empty_message="本期暂无终端异常 / 盘点类重点动作。",
+    )
+
+    assert group["count_label"] == "暂无重点动作"
+    assert group["priority_mix"] == "本期无重点动作"
+
+
+def test_diagnosis_management_conclusion_omits_green_sentence_when_no_green_regions(tmp_path: Path) -> None:
+    template_path = tmp_path / "report_template.md.j2"
+    template_path.write_text("# {{ title }}\n", encoding="utf-8")
+    service = ReportService(template_path, DummyLogger())
+
+    conclusion = service._build_diagnosis_management_conclusion(
+        {
+            "red_count": 4,
+            "yellow_count": 5,
+            "green_count": 0,
+            "total_regions": 9,
+            "red_light_details": [
+                {"region": "华北二区"},
+                {"region": "华中一区"},
+                {"region": "华中二区"},
+            ],
+        }
+    )
+
+    assert "0个大区得分85分以上" not in conclusion
+    assert "5个大区得分70-84分需关注。" in conclusion
 
 
 def test_dedupe_delimited_text_removes_repeated_segments(tmp_path: Path) -> None:
@@ -771,7 +836,7 @@ def test_template_context_builds_combo_charts(tmp_path: Path) -> None:
     assert "P1判定" in ai_display_actions[0]["priority_reason"]
     assert "严重度评分" in ai_display_actions[0]["priority_rule"]
     assert "高库销&高进销" in template_context["purchase_management_conclusion"]
-    assert "当前地区端不存在红灯失控问题" in template_context["regional_management_conclusion"]
+    assert "地区端暂未出现红灯失控问题" in template_context["regional_management_conclusion"]
     assert "当前缺少足够的分型号结构数据" in template_context["model_management_conclusion"]
     assert "整体仍处制度控制线内" in template_context["consumption_management_conclusion"]
     assert "订单端配比控制总体稳定" in template_context["order_control_management_conclusion"]
@@ -1201,7 +1266,7 @@ def test_purchase_risk_rows_follow_rule_matrix(tmp_path: Path) -> None:
     purchase_risk_summary_table_html = template_context["purchase_risk_summary_table_html"]
 
     assert template_context["purchase_future_ratio_explainer"] == (
-        "次月期末库销测算计算逻辑：(筛选日期末库存 - 测算未来30天纸袋销量) / 测算未来30天纸袋销量"
+        "次月期末库销测算 = (筛选日期末库存 - 测算未来30天纸袋销量) / 测算未来30天纸袋销量"
     )
     assert [row["rule_name"] for row in rows] == [
         "规则1（P1：期初红，期末红，预测红/黄）",

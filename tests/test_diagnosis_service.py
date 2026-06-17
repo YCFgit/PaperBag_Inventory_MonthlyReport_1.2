@@ -1,4 +1,5 @@
 from src.services.diagnosis_service import DiagnosisService
+from src.models.schemas import NormalizedDataset
 
 
 def test_usage_diagnosis_uses_ratios_not_absolute_quantities() -> None:
@@ -89,7 +90,7 @@ def test_usage_problem_rows_expose_theory_and_actual_ratios() -> None:
     assert m_problem["expected_actual_qty"] == 100.0
     assert m_problem["actual_qty"] == 1000
     assert m_problem["deviation_rate_pct"] == "+900.0%"
-    assert m_problem["adjusted_deviation_rate_pct"] == "885.0%"
+    assert m_problem["adjusted_deviation_rate_pct"] == "890.0%"
     assert "大袋小用风险" in m_problem["direction"]
 
 
@@ -135,12 +136,59 @@ def test_problem_light_details_include_yellow_regions() -> None:
     detail = diagnosis["problem_light_details"][0]
     assert detail["status"] == "🟡 黄灯"
     assert detail["stock_problems"][0]["diff_pct"] == "+50.0%"
-    assert detail["stock_problems"][0]["adjusted_diff_pct"] == "45.0%"
+    assert detail["stock_problems"][0]["adjusted_diff_pct"] == "40.0%"
     assert detail["stock_problems"][1]["diff_pct"] == "-50.0%"
     assert [action["priority"] for action in detail["recommended_actions"]] == sorted(
         [action["priority"] for action in detail["recommended_actions"]],
         key={"高": 0, "中": 1, "低": 2}.get,
     )
+
+
+def test_summary_sentence_omits_green_sentence_when_no_green_regions() -> None:
+    service = DiagnosisService()
+
+    diagnosis = service.build_diagnosis(
+        theory_rows=[
+            {
+                "region": "华东一区",
+                "period": "2026-05",
+                "xs_theory_qty": 500,
+                "s_theory_qty": 500,
+                "m_theory_qty": 0,
+                "l_theory_qty": 0,
+                "xl_theory_qty": 0,
+                "total_theory_qty": 1000,
+            }
+        ],
+        actual_rows=[
+            {
+                "region": "华东一区",
+                "period": "2026-05",
+                "xs_actual_qty": 500,
+                "s_actual_qty": 500,
+                "m_actual_qty": 0,
+                "l_actual_qty": 0,
+                "xl_actual_qty": 0,
+                "total_actual_qty": 1000,
+            }
+        ],
+        stock_rows=[
+            {
+                "region": "华东一区",
+                "period": "2026-05",
+                "xs_stock_qty": 1000,
+                "s_stock_qty": 0,
+                "m_stock_qty": 0,
+                "l_stock_qty": 0,
+                "xl_stock_qty": 0,
+                "total_stock_qty": 1000,
+            }
+        ],
+        report_month="2026-05",
+    )
+
+    assert diagnosis["green_count"] == 0
+    assert "0个大区得分85分以上" not in diagnosis["summary_sentence"]
 
 
 def test_diagnosis_action_items_include_followup_tracking_fields() -> None:
@@ -267,7 +315,94 @@ def test_v11_inventory_tolerance_only_penalizes_excess_gap() -> None:
     )
 
     row = diagnosis["diagnosis_ranking"][0]
-    assert row["inventory_health_score"] == 95.0
+    assert row["inventory_health_score"] == 100.0
+
+
+def test_stock_diagnosis_dedupes_understock_when_depth_below_one_month() -> None:
+    service = DiagnosisService()
+
+    diagnosis = service.build_diagnosis(
+        theory_rows=[{
+            "region": "华北二区",
+            "period": "2026-05",
+            "xs_theory_qty": 0,
+            "s_theory_qty": 400,
+            "m_theory_qty": 600,
+            "l_theory_qty": 0,
+            "xl_theory_qty": 0,
+            "total_theory_qty": 1000,
+        }],
+        actual_rows=[{
+            "region": "华北二区",
+            "period": "2026-05",
+            "xs_actual_qty": 0,
+            "s_actual_qty": 20,
+            "m_actual_qty": 980,
+            "l_actual_qty": 0,
+            "xl_actual_qty": 0,
+            "total_actual_qty": 1000,
+        }],
+        stock_rows=[{
+            "region": "华北二区",
+            "period": "2026-05",
+            "xs_stock_qty": 0,
+            "s_stock_qty": 50,
+            "m_stock_qty": 950,
+            "l_stock_qty": 0,
+            "xl_stock_qty": 0,
+            "total_stock_qty": 1000,
+        }],
+        report_month="2026-05",
+    )
+
+    detail = diagnosis["problem_light_details"][0]
+    stock_labels = [item["label"] for item in detail["stock_diagnosis"]["findings"] if item.get("size_label") == "S"]
+
+    assert stock_labels == ["库存无法支持合理使用"]
+    assert detail["usage_diagnosis"]["summary"].count("1. S码") == 1
+
+
+def test_usage_diagnosis_can_classify_bundle_issue() -> None:
+    service = DiagnosisService()
+
+    diagnosis = service.build_diagnosis(
+        theory_rows=[{
+            "region": "华东一区",
+            "period": "2026-05",
+            "xs_theory_qty": 100,
+            "s_theory_qty": 150,
+            "m_theory_qty": 200,
+            "l_theory_qty": 250,
+            "xl_theory_qty": 300,
+            "total_theory_qty": 1000,
+        }],
+        actual_rows=[{
+            "region": "华东一区",
+            "period": "2026-05",
+            "xs_actual_qty": 500,
+            "s_actual_qty": 550,
+            "m_actual_qty": 250,
+            "l_actual_qty": 100,
+            "xl_actual_qty": 100,
+            "total_actual_qty": 1500,
+        }],
+        stock_rows=[{
+            "region": "华东一区",
+            "period": "2026-05",
+            "xs_stock_qty": 450,
+            "s_stock_qty": 500,
+            "m_stock_qty": 250,
+            "l_stock_qty": 100,
+            "xl_stock_qty": 100,
+            "total_stock_qty": 1400,
+        }],
+        report_month="2026-05",
+    )
+
+    detail = diagnosis["problem_light_details"][0]
+
+    assert detail["usage_diagnosis"]["label"] == "合包问题"
+    assert "合包执行不足" in detail["usage_diagnosis"]["summary"]
 
 
 def test_input_csv_reader_supports_gbk_region_names(tmp_path) -> None:
@@ -309,6 +444,43 @@ def test_build_actual_and_stock_rows_from_model_card_pivots_a597_rows() -> None:
     assert stock_by_region["华东二区"]["total_stock_qty"] == 42952
     assert actual_by_region["华南一区"]["l_actual_qty"] == 10
     assert "小计" not in actual_by_region
+
+
+def test_extract_model_card_rows_prefers_raw_payload_over_replaced_rows() -> None:
+    service = DiagnosisService()
+    dataset = NormalizedDataset(
+        role="regional_model_purchase_analysis",
+        card_id="a597c4441b7414c93a7c502d",
+        card_name="分型号库存",
+        section="inventory_diagnosis",
+        rows=[{"滔搏纸袋分类": "滔搏纸袋-XS", "原销售大区": "华北二区", "期末近30天累计纸袋销售量": 79366}],
+        summary={},
+        raw_payload={
+            "pages": [
+                {
+                    "data": {
+                        "rowList": [
+                            {
+                                "滔搏纸袋分类": "滔搏纸袋-XS",
+                                "原销售大区": "华北二区",
+                                "期末近30天累计纸袋销售量": 79367,
+                                "期末业务库存量": 134534,
+                            }
+                        ]
+                    }
+                }
+            ]
+        },
+    )
+
+    rows = service.extract_model_card_rows(dataset)
+
+    assert rows == [{
+        "滔搏纸袋分类": "滔搏纸袋-XS",
+        "原销售大区": "华北二区",
+        "期末近30天累计纸袋销售量": 79367,
+        "期末业务库存量": 134534,
+    }]
 
 
 def test_diagnosis_only_keeps_current_nine_regions() -> None:

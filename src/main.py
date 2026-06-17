@@ -928,9 +928,8 @@ def _run_diagnosis(
     """尝试运行纸袋健康度诊断。
 
     数据来源优先级：
-    1. data/input_data/{report_month}理论需求量/实际消耗量/月末库存量.csv（优先使用诊断 SQL 结果）
-    2. 理论需求 CSV/JSON + a597 地区型号卡片透视出的近30天销售量和期末业务库存量
-    3. data/processed/diagnosis/{report_month}/ 下的 JSON 文件（旧版预计算结果）
+    1. 观远 a597 卡片原始行 + 理论需求 CSV/JSON
+    2. data/input_data/{report_month}理论需求量/实际消耗量/月末库存量.csv 本地兜底
     """
     import json as _json
 
@@ -950,58 +949,56 @@ def _run_diagnosis(
         except Exception as exc:
             logger.warning("Diagnosis theory JSON failed: %s", exc)
 
-    try:
-        csv_rows = diagnosis_service.load_input_csv_rows(report_month)
-        if csv_rows:
-            theory_rows, actual_rows, stock_rows = csv_rows
-            result = diagnosis_service.build_diagnosis(theory_rows, actual_rows, stock_rows, report_month)
-            logger.info("Diagnosis module completed from input CSV: %s regions scored.", result.get("total_regions", 0))
-            return result
-    except Exception as exc:
-        logger.warning("Diagnosis input CSV failed, falling back to mixed sources: %s", exc)
-
     model_dataset = next(
         (
             dataset
             for dataset in (normalized_datasets or [])
-            if getattr(dataset, "role", "") == "regional_model_purchase_analysis" and getattr(dataset, "rows", None)
+            if getattr(dataset, "role", "") == "regional_model_purchase_analysis"
+            and (getattr(dataset, "rows", None) or getattr(dataset, "raw_payload", None))
         ),
         None,
     )
     if theory_rows and model_dataset:
         try:
+            model_rows = diagnosis_service.extract_model_card_rows(model_dataset)
             actual_rows, stock_rows = diagnosis_service.build_actual_and_stock_rows_from_model_card(
-                getattr(model_dataset, "rows", []),
+                model_rows,
                 report_month,
             )
             if actual_rows and stock_rows:
                 result = diagnosis_service.build_diagnosis(theory_rows, actual_rows, stock_rows, report_month)
                 logger.info(
-                    "Diagnosis module completed from a597 normalized card data: %s regions scored.",
+                    "Diagnosis module completed from a597 card data: %s regions scored.",
                     result.get("total_regions", 0),
                 )
                 return result
-            logger.warning("Diagnosis a597 card data was present but could not be pivoted; falling back to legacy inputs.")
+            logger.warning("Diagnosis a597 card data was present but could not be pivoted; trying local CSV fallback.")
         except Exception as exc:
-            logger.warning("Diagnosis a597 card pivot failed, falling back to legacy inputs: %s", exc)
-
-    actual_file = diagnosis_dir / "actual_consumption.json"
-    stock_file = diagnosis_dir / "inventory.json"
-
-    if not all(f.exists() for f in [theory_file, actual_file, stock_file]):
-        logger.info("Diagnosis data files not found in %s, skipping diagnosis module.", diagnosis_dir)
-        return None
+            logger.warning("Diagnosis a597 card pivot failed, trying local CSV fallback: %s", exc)
 
     try:
-        theory_rows = _json.loads(theory_file.read_text(encoding="utf-8"))
-        actual_rows = _json.loads(actual_file.read_text(encoding="utf-8"))
-        stock_rows = _json.loads(stock_file.read_text(encoding="utf-8"))
-        result = diagnosis_service.build_diagnosis(theory_rows, actual_rows, stock_rows, report_month)
-        logger.info("Diagnosis module completed: %s regions scored.", result.get("total_regions", 0))
-        return result
+        csv_rows = diagnosis_service.load_input_csv_rows(report_month)
+        if csv_rows:
+            csv_theory_rows, actual_rows, stock_rows = csv_rows
+            result = diagnosis_service.build_diagnosis(csv_theory_rows, actual_rows, stock_rows, report_month)
+            logger.info(
+                "Diagnosis module completed from local CSV fallback: %s regions scored.",
+                result.get("total_regions", 0),
+            )
+            return result
     except Exception as exc:
-        logger.warning("Diagnosis module failed, skipping: %s", exc)
+        logger.warning("Diagnosis local CSV fallback failed: %s", exc)
+
+    if theory_rows is None:
+        logger.info("Diagnosis theory input was unavailable for %s, skipping diagnosis module.", report_month)
         return None
+
+    if model_dataset is None:
+        logger.warning("Diagnosis a597 card data was unavailable and local CSV fallback was missing; skipping diagnosis module.")
+    else:
+        logger.warning("Diagnosis a597 card data and local CSV fallback were both unavailable; skipping diagnosis module.")
+
+    return None
 
 
 def _save_json(path: Path, payload: Any) -> None:

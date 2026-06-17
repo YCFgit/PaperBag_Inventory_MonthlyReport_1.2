@@ -286,7 +286,7 @@ class ReportService:
             "purchase_priority_risk_rows": purchase_priority_risk_rows,
             "purchase_risk_summary_table_html": purchase_risk_summary_table_html,
             "purchase_priority_risk_summary_table_html": purchase_priority_risk_summary_table_html,
-            "purchase_future_ratio_explainer": "次月期末库销测算计算逻辑：(筛选日期末库存 - 测算未来30天纸袋销量) / 测算未来30天纸袋销量",
+            "purchase_future_ratio_explainer": "次月期末库销测算 = (筛选日期末库存 - 测算未来30天纸袋销量) / 测算未来30天纸袋销量",
             "purchase_report_empty_message": self._build_purchase_report_empty_message(
                 purchase_alerts=purchase_alerts,
                 purchase_joined_rows=purchase_joined_rows,
@@ -725,13 +725,14 @@ class ReportService:
             protected,
         )
         protected = protect(r"\*\*.*?\*\*", protected)
+        unit_pattern = r"(?:个地区型号|个地区|个大区|个型号|个百分点|个月|万元|万|元|分|单|家|月|天|倍|条|项|个|%)"
         for pattern in [
-            r"(?<![\d/\-])((?:>=|<=|>|<|±)\s*\d+(?:\.\d+)?)(?![\d/\-])",
-            r"(?<![\d/\-])(\d+\.\d+)(?![\d/\-])",
-            r"(?<![\d/\-])(\d+(?:%|个百分点|分|个地区型号|个地区|个大区|个型号|个|单|家|个月|月|天|倍|万|万元|元|条|项))(?![\d/\-])",
+            rf"(?<![\d/])((?:>=|<=|>|<|±)\s*[+-]?\d+(?:\.\d+)?(?:\s*{unit_pattern})?)(?![\d/])",
+            rf"(?<![\d/])([+-]?\d+(?:\.\d+)?(?:\s*{unit_pattern}))(?![\d/])",
+            r"(?<![\d/])([+-]?\d+\.\d+)(?![\d/])",
         ]:
             protected = re.sub(pattern, r"**\1**", protected)
-        protected = protect(r"\*\*.*?\*\*", protected)
+            protected = protect(r"\*\*.*?\*\*", protected)
         protected = re.sub(
             r"(红灯|黄灯|绿灯|P1|P2|P3|高风险|中风险|关注风险|补货压力|结构错配|异常订单|盘点损失|库存积压|库存短缺|优先处理|立即复核)",
             r"**\1**",
@@ -1810,7 +1811,7 @@ class ReportService:
             "items": preview_items,
             "total_count": total_count,
             "display_count": display_count,
-            "count_label": f"{total_count}项重点动作" if total_count else "0项重点动作",
+            "count_label": f"{total_count}项重点动作" if total_count else "暂无重点动作",
             "priority_mix": f"P1 {p1_count}项 / P2 {p2_count}项" if total_count else "本期无重点动作",
             "issue_snapshot": issue_snapshot,
             "display_hint": (
@@ -2936,16 +2937,16 @@ class ReportService:
 
         sentences: list[str] = []
         if high_inbound_alerts:
-            sentences.append(f"{len(high_inbound_alerts)}个地区型号属于高库销&高进销，订购量恰当性不足。")
+            sentences.append(f"{len(high_inbound_alerts)}个地区型号属于高库销&高进销，订购节奏偏快。")
         if low_inbound_alerts:
-            sentences.append(f"{len(low_inbound_alerts)}个地区型号属于高库销&低进销，历史积压尚未消化反而继续订购，订购决策合理性不足。")
+            sentences.append(f"{len(low_inbound_alerts)}个地区型号属于高库销&低进销，历史积压尚未消化，仍有继续补货现象。")
         if not sentences:
             sentences.append(f"共识别{len(purchase_alerts)}个高库销订购关注组合，需继续跟踪消化和订购节奏。")
 
         focus_rows = high_inbound_alerts[:2] if high_inbound_alerts else low_inbound_alerts[:2]
         if focus_rows:
             focus_text = "、".join(f"{item.get('region')}-{item.get('model')}" for item in focus_rows)
-            sentences.append(f"重点关注 {focus_text}。")
+            sentences.append(f"重点组合为：{focus_text}。")
 
         return "".join(sentences)
 
@@ -2976,7 +2977,7 @@ class ReportService:
                 f"{red_count}个红灯、{yellow_count}个黄灯地区仍在拉高公司整体库销，其余{green_count}个地区已基本回到目标区间。"
             )
         return (
-            f"当前地区端不存在红灯失控问题，主要压力集中在{focus_text}等黄灯区域；"
+            f"地区端暂未出现红灯失控问题，主要压力集中在{focus_text}等黄灯区域；"
             f"{yellow_count}个尾部地区尚未回到目标区间，其余{green_count}个地区已基本达标。"
         )
 
@@ -3092,7 +3093,19 @@ class ReportService:
         previous_month_loss = stocktake_risks.get("previous_month_loss")
         if not focus_regions:
             if monthly_loss is not None:
-                return f"当前盘点未出现需要追损的重点大区，月度盘点损失指标为 **{monthly_loss:.2f}**。"
+                sentences = [
+                    f"当前盘点未出现需要追损的重点大区，月度盘点损失指标为 **{monthly_loss:.2f}**。"
+                ]
+                if previous_month_loss is not None:
+                    if monthly_loss > previous_month_loss:
+                        sentences.append("虽未形成单一区域性风险，但全国层面零散损耗较上月有所扩大。")
+                    elif monthly_loss < previous_month_loss:
+                        sentences.append("整体损耗较上月已有所收敛，但仍需持续压降零散盘亏。")
+                    else:
+                        sentences.append("整体损耗与上月基本持平，仍需继续跟踪零散盘亏来源。")
+                else:
+                    sentences.append("说明风险更偏向零散门店与个别账实差异，仍需持续做好门店复盘和账实核对。")
+                return "".join(sentences)
             return stocktake_risks.get("summary_sentence", "盘点控制结论待补充。")
 
         focus_text = "、".join(
@@ -3126,7 +3139,8 @@ class ReportService:
             parts.append("普遍存在门店用袋尺码占比偏离理论配比、仓库各尺码备货比例不合理的问题。")
         if yellow:
             parts.append(f"{yellow}个大区得分70-84分需关注。")
-        parts.append(f"{green}个大区得分85分以上运行正常。")
+        if green:
+            parts.append(f"{green}个大区得分85分以上运行正常。")
         return "".join(parts)
 
     def _previous_month(self, report_month: str) -> str:
