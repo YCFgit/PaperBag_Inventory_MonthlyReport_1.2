@@ -1014,8 +1014,8 @@ class DiagnosisService:
             size, qty_text = match.groups()
             qty = int(qty_text)
             size_label = size.upper() + "码"
-            parts.append(f"{size_label}×{qty}" if qty > 1 else size_label)
-        return "+".join(parts)
+            parts.append(f"{qty}个{size_label}纸袋" if qty > 1 else size_label)
+        return "、".join(parts)
 
     @classmethod
     def _describe_combo_pattern(cls, combo_rows: list[dict[str, Any]]) -> str:
@@ -1113,8 +1113,9 @@ class DiagnosisService:
         else:
             summary_text = f"小袋多用订单占比{cls._format_pct(order_ratio)}，存在未合并装袋问题"
         if extra_cost > 0:
-            summary_text += f"，月度额外成本约¥{round(extra_cost):,.0f}"
-        summary_text += "。"
+            summary_text += f"。未合并装袋（小袋多用）月度额外成本约¥{round(extra_cost):,.0f}。"
+        else:
+            summary_text += "。"
 
         return {
             "label": "未合并装袋（小袋多用）",

@@ -534,8 +534,44 @@ def test_usage_diagnosis_uses_small_bag_csv_findings_when_triggered() -> None:
     assert "小袋多用订单占比18.0%" in usage["summary"]
     assert "主要为加袋型（占小袋多用订单的45.0%）" in usage["summary"]
     assert "主要表现为额外多加S码600个" in usage["summary"]
+    assert "未合并装袋（小袋多用）月度额外成本约¥2,100" in usage["summary"]
     assert "<br>" not in usage["summary"]
     assert usage["extra_cost"] == 2100.0
+
+
+def test_small_bag_combo_summary_uses_chinese_count_phrase_and_separate_cost_sentence() -> None:
+    finding = DiagnosisService._build_small_bag_overuse_finding(
+        {
+            "summary": {
+                "region": "华南一区",
+                "period": "2026-05",
+                "small_bag_order_ratio": 0.264,
+                "small_bag_extra_cost": 13554.0,
+                "add_order_ratio_in_small_bag": 0.10,
+                "replace_order_ratio_in_small_bag": 0.714,
+                "pure_order_ratio_in_small_bag": 0.171,
+            },
+            "size_breakdown": [],
+            "combo_pattern": [
+                {
+                    "region": "华南一区",
+                    "period": "2026-05",
+                    "replaced_from": "XLx1",
+                    "replaced_to": "Sx2",
+                    "combo_order_cnt": 30,
+                    "combo_extra_cost": 100.0,
+                    "combo_order_ratio_in_region": 0.714,
+                }
+            ],
+        }
+    )
+
+    assert finding is not None
+    assert finding["summary"] == (
+        "小袋多用订单占比26.4%，主要为组合替代型（占小袋多用订单的71.4%），"
+        "主要表现为XL码被2个S码纸袋替代。"
+        "未合并装袋（小袋多用）月度额外成本约¥13,554。"
+    )
 
 
 def test_usage_diagnosis_combines_large_bag_and_small_bag_findings() -> None:
