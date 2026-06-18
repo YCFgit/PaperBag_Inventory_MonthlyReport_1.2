@@ -308,7 +308,7 @@
 
 {{ report_note("管理结论", "健康度诊断结论", diagnosis_management_conclusion, "accent") }}
 
-{{ report_note("评分规则", "第六模块固定口径", "综合得分 = 使用合规率得分 × 50% + 库存健康度得分 × 50%<br>- 使用合规率得分：按尺码对比“实际使用量”与“标准化期望用量”，仅对超出 ±10% 宽容区间的部分扣分，并按理论需求占比加权。<br>- 库存健康度得分：对比“库存结构”与“理论需求结构”，仅对超出 ±10个百分点宽容区间的部分计入错配度。<br>- 判定标准：85分及以上为绿灯，70-84分为黄灯，70分以下为红灯。<br>- 数据来源：优先读取观远 a597 大区型号卡片原始数据；若卡片不可用，则回退到本地诊断 CSV。") }}
+{{ report_note("评分规则", "第六模块固定口径", "综合得分 = 使用合规率得分 × 50% + 库存健康度得分 × 50%<br>- 使用合规率得分：按尺码对比“实际使用量”与“标准化期望用量”，仅对超出 ±10% 宽容区间的部分扣分，并按理论需求占比加权。<br>- 库存健康度得分：对比“库存结构”与“理论需求结构”，仅对超出 ±10个百分点宽容区间的部分计入错配度。<br>- 判定标准：85分及以上为绿灯，70-84分为黄灯，70分以下为红灯。<br>- 数据来源：理论值来自本地诊断 CSV；实际消耗和库存优先读取观远 a597 大区型号卡片原始数据，卡片不可用时回退到本地诊断 CSV；小袋多用归因读取本地 SQL 导出 CSV。") }}
 
 ### 大区纸袋健康度综合排名
 
@@ -333,7 +333,14 @@
 
 **使用合规诊断**
 
-- {{ detail.usage_diagnosis.severity }} **{{ detail.usage_diagnosis.label }}**：{{ detail.usage_diagnosis.summary | emphasize_text | rich_text | safe }}
+{% set usage_findings = detail.usage_diagnosis.findings if detail.usage_diagnosis.findings else [detail.usage_diagnosis] %}
+{% for finding in usage_findings %}
+- {{ finding.severity }} **{{ finding.label }}**：{{ finding.summary | emphasize_text | rich_text | safe }}
+{% endfor %}
+
+{% if detail.usage_diagnosis.extra_cost and detail.usage_diagnosis.extra_cost > 0 and usage_findings|length > 1 %}
+**额外成本合计**：{{ strong_value('¥' ~ (detail.usage_diagnosis.extra_cost | round(0) | int)) }}
+{% endif %}
 
 {% if detail.stock_diagnosis.findings %}
 **库存健康诊断**

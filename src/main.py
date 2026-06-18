@@ -930,11 +930,38 @@ def _run_diagnosis(
     数据来源优先级：
     1. 观远 a597 卡片原始行 + 理论需求 CSV/JSON
     2. data/input_data/{report_month}理论需求量/实际消耗量/月末库存量.csv 本地兜底
+
+    小袋多用归因：
+    - 若存在 data/input_data/{report_month}小袋多用*.csv，则作为 V1.3 使用诊断增强数据加载
     """
     import json as _json
 
     project_root = Path(__file__).resolve().parent.parent
     diagnosis_dir = project_root / "data" / "processed" / "diagnosis" / report_month
+    load_small_bag_rows = getattr(diagnosis_service, "load_small_bag_input_rows", None)
+    small_bag_inputs = load_small_bag_rows(report_month) if callable(load_small_bag_rows) else {}
+    small_bag_inputs = small_bag_inputs or {}
+
+    def _build_diagnosis_result(
+        theory_rows: list[dict[str, Any]],
+        actual_rows: list[dict[str, Any]],
+        stock_rows: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        kwargs = {
+            "small_bag_summary_rows": small_bag_inputs.get("summary"),
+            "small_bag_size_rows": small_bag_inputs.get("size_breakdown"),
+            "small_bag_combo_rows": small_bag_inputs.get("combo_pattern"),
+        }
+        try:
+            return diagnosis_service.build_diagnosis(
+                theory_rows,
+                actual_rows,
+                stock_rows,
+                report_month,
+                **kwargs,
+            )
+        except TypeError:
+            return diagnosis_service.build_diagnosis(theory_rows, actual_rows, stock_rows, report_month)
 
     theory_rows: list[dict[str, Any]] | None = None
     try:
@@ -966,7 +993,7 @@ def _run_diagnosis(
                 report_month,
             )
             if actual_rows and stock_rows:
-                result = diagnosis_service.build_diagnosis(theory_rows, actual_rows, stock_rows, report_month)
+                result = _build_diagnosis_result(theory_rows, actual_rows, stock_rows)
                 logger.info(
                     "Diagnosis module completed from a597 card data: %s regions scored.",
                     result.get("total_regions", 0),
@@ -980,7 +1007,7 @@ def _run_diagnosis(
         csv_rows = diagnosis_service.load_input_csv_rows(report_month)
         if csv_rows:
             csv_theory_rows, actual_rows, stock_rows = csv_rows
-            result = diagnosis_service.build_diagnosis(csv_theory_rows, actual_rows, stock_rows, report_month)
+            result = _build_diagnosis_result(csv_theory_rows, actual_rows, stock_rows)
             logger.info(
                 "Diagnosis module completed from local CSV fallback: %s regions scored.",
                 result.get("total_regions", 0),

@@ -118,6 +118,9 @@ class DiagnosisService:
     USAGE_TOLERANCE_RATE = 0.10
     STOCK_TOLERANCE_PP = 0.10
     USAGE_SCORE_FACTOR = 150.0
+    SMALL_BAG_TRIGGER_RATIO = 0.10
+    SMALL_BAG_TYPE_EXPAND_RATIO = 0.10
+    SMALL_BAG_MODEL_EXPAND_RATIO = 0.30
     INVENTORY_SUPPORT_MONTH_MIN = 1.0
     INVENTORY_OVERSTOCK_MONTH_MAX = 2.0
     THEORETICAL_DEMAND_SHARE_MIN = 0.10
@@ -160,14 +163,25 @@ class DiagnosisService:
         actual_rows: list[dict[str, Any]],
         stock_rows: list[dict[str, Any]],
         report_month: str,
+        small_bag_summary_rows: list[dict[str, Any]] | None = None,
+        small_bag_size_rows: list[dict[str, Any]] | None = None,
+        small_bag_combo_rows: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """合并三张表数据并计算健康度评分。"""
         merged = self._merge_three_tables(theory_rows, actual_rows, stock_rows)
+        small_bag_lookup = self._build_small_bag_lookup(
+            small_bag_summary_rows or [],
+            small_bag_size_rows or [],
+            small_bag_combo_rows or [],
+        )
         diagnoses: list[RegionDiagnosis] = []
         for row in merged:
             if row.get("region") not in self.DIAGNOSIS_ALLOWED_REGIONS:
                 continue
-            diag = self._compute_scores(row)
+            diag = self._compute_scores(
+                row,
+                small_bag_lookup.get((row.get("region"), self._normalize_period(row.get("period", "")))),
+            )
             diagnoses.append(diag)
 
         diagnoses.sort(key=self._diagnosis_rank_key)
@@ -277,6 +291,25 @@ class DiagnosisService:
             return None
         return self._read_csv_rows(path)
 
+    def load_small_bag_input_rows(self, report_month: str) -> dict[str, list[dict[str, Any]]] | None:
+        """读取第六章小袋多用明细 CSV。"""
+        paths = {
+            "summary": self.INPUT_DATA_DIR / f"{report_month}小袋多用总览.csv",
+            "size_breakdown": self.INPUT_DATA_DIR / f"{report_month}小袋多用尺码归因明细.csv",
+            "combo_pattern": self.INPUT_DATA_DIR / f"{report_month}小袋多用组合替代模式.csv",
+        }
+        if not paths["summary"].exists():
+            return None
+        return {
+            "summary": self._normalize_small_bag_summary_rows(self._read_csv_rows(paths["summary"])),
+            "size_breakdown": self._normalize_small_bag_size_rows(self._read_csv_rows(paths["size_breakdown"]))
+            if paths["size_breakdown"].exists()
+            else [],
+            "combo_pattern": self._normalize_small_bag_combo_rows(self._read_csv_rows(paths["combo_pattern"]))
+            if paths["combo_pattern"].exists()
+            else [],
+        }
+
     # ------------------------------------------------------------------
     # 内部：工具方法
     # ------------------------------------------------------------------
@@ -299,6 +332,70 @@ class DiagnosisService:
             except UnicodeDecodeError as exc:
                 last_error = exc
         raise ValueError(f"Unable to read CSV with supported encodings: {path}") from last_error
+
+    @staticmethod
+    def _to_float(value: Any) -> float:
+        if value in (None, ""):
+            return 0.0
+        try:
+            return float(str(value).replace(",", ""))
+        except ValueError:
+            return 0.0
+
+    @classmethod
+    def _normalize_small_bag_summary_rows(cls, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        int_fields = {
+            "total_order_cnt",
+            "small_bag_order_cnt",
+            "small_bag_extra_bag_qty",
+            "add_order_cnt",
+            "replace_order_cnt",
+            "pure_order_cnt",
+            "add_extra_bag_qty",
+            "replace_extra_bag_qty",
+            "pure_extra_bag_qty",
+        }
+        float_fields = {
+            "small_bag_order_ratio",
+            "small_bag_extra_cost",
+            "add_order_ratio_in_small_bag",
+            "replace_order_ratio_in_small_bag",
+            "pure_order_ratio_in_small_bag",
+            "add_extra_cost",
+            "replace_extra_cost",
+            "pure_extra_cost",
+        }
+        return [cls._coerce_csv_fields(row, int_fields, float_fields) for row in rows]
+
+    @classmethod
+    def _normalize_small_bag_size_rows(cls, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        int_fields = {"order_cnt", "delta_qty"}
+        float_fields = {"qty_ratio_in_type"}
+        return [cls._coerce_csv_fields(row, int_fields, float_fields) for row in rows]
+
+    @classmethod
+    def _normalize_small_bag_combo_rows(cls, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        int_fields = {"combo_order_cnt"}
+        float_fields = {"combo_extra_cost", "combo_order_ratio_in_region"}
+        return [cls._coerce_csv_fields(row, int_fields, float_fields) for row in rows]
+
+    @classmethod
+    def _coerce_csv_fields(
+        cls,
+        row: dict[str, Any],
+        int_fields: set[str],
+        float_fields: set[str],
+    ) -> dict[str, Any]:
+        normalized = dict(row)
+        if "period" in normalized:
+            normalized["period"] = cls._normalize_period(normalized["period"])
+        for field in int_fields:
+            if field in normalized:
+                normalized[field] = cls._to_int(normalized[field])
+        for field in float_fields:
+            if field in normalized:
+                normalized[field] = cls._to_float(normalized[field])
+        return normalized
 
     @classmethod
     def _normalize_csv_row(cls, row: dict[str, Any]) -> dict[str, Any]:
@@ -471,11 +568,30 @@ class DiagnosisService:
             })
         return merged
 
+    @classmethod
+    def _build_small_bag_lookup(
+        cls,
+        summary_rows: list[dict[str, Any]],
+        size_rows: list[dict[str, Any]],
+        combo_rows: list[dict[str, Any]],
+    ) -> dict[tuple[str, str], dict[str, Any]]:
+        lookup: dict[tuple[str, str], dict[str, Any]] = {}
+        for row in summary_rows:
+            key = (str(row.get("region") or ""), cls._normalize_period(str(row.get("period") or "")))
+            lookup.setdefault(key, {"summary": None, "size_breakdown": [], "combo_pattern": []})["summary"] = row
+        for row in size_rows:
+            key = (str(row.get("region") or ""), cls._normalize_period(str(row.get("period") or "")))
+            lookup.setdefault(key, {"summary": None, "size_breakdown": [], "combo_pattern": []})["size_breakdown"].append(row)
+        for row in combo_rows:
+            key = (str(row.get("region") or ""), cls._normalize_period(str(row.get("period") or "")))
+            lookup.setdefault(key, {"summary": None, "size_breakdown": [], "combo_pattern": []})["combo_pattern"].append(row)
+        return lookup
+
     # ------------------------------------------------------------------
     # 内部：评分计算（核心逻辑）
     # ------------------------------------------------------------------
 
-    def _compute_scores(self, row: dict[str, Any]) -> RegionDiagnosis:
+    def _compute_scores(self, row: dict[str, Any], small_bag_context: dict[str, Any] | None = None) -> RegionDiagnosis:
         total_theory = row["total_theory_qty"]
         total_actual = row["total_actual_qty"]
         total_stock = row["total_stock_qty"]
@@ -554,7 +670,7 @@ class DiagnosisService:
             status=status,
             inventory_structure_deviation=round(stock_deviation * 100, 2),
         )
-        usage_diagnosis = self._build_usage_diagnosis(temp_diag)
+        usage_diagnosis = self._build_usage_diagnosis(temp_diag, small_bag_context)
         stock_diagnosis = self._build_stock_diagnosis(temp_diag)
         diag_type = self._classify_diagnosis(usage_diagnosis, stock_diagnosis)
 
@@ -711,7 +827,7 @@ class DiagnosisService:
         return lines
 
     @classmethod
-    def _build_usage_diagnosis(cls, d: RegionDiagnosis) -> dict[str, Any]:
+    def _build_large_bag_usage_finding(cls, d: RegionDiagnosis) -> dict[str, Any] | None:
         pairs: list[dict[str, Any]] = []
         for large_name, large_metric in d.size_metrics:
             if cls.SIZE_ORDER.get(large_name, -1) < cls.SIZE_ORDER["m"]:
@@ -799,7 +915,10 @@ class DiagnosisService:
                 "extra_cost": round(total_extra_cost, 2),
                 "details": pairs,
             }
+        return None
 
+    @classmethod
+    def _build_bundle_issue_finding(cls, d: RegionDiagnosis) -> dict[str, Any] | None:
         small_overuse = [
             (size_name, metric)
             for size_name, metric in d.size_metrics
@@ -844,14 +963,206 @@ class DiagnosisService:
                     for size_name, metric in small_overuse
                 ],
             }
+        return None
+
+    @staticmethod
+    def _severity_rank(severity: str) -> int:
+        return {"🔴": 3, "🟡": 2, "🟢": 1}.get(str(severity or "")[:1], 0)
+
+    @classmethod
+    def _pick_highest_severity(cls, findings: list[dict[str, Any]]) -> str:
+        if not findings:
+            return "🟢"
+        return max((str(item.get("severity", "🟢")) for item in findings), key=cls._severity_rank)
+
+    @staticmethod
+    def _format_pct(value: float) -> str:
+        return f"{value * 100:.1f}%"
+
+    @staticmethod
+    def _format_count(value: Any) -> str:
+        try:
+            return f"{int(round(float(value))):,}"
+        except (TypeError, ValueError):
+            return "0"
+
+    @classmethod
+    def _describe_small_bag_size(
+        cls,
+        size_rows: list[dict[str, Any]],
+        *,
+        prefix: str,
+    ) -> str:
+        if not size_rows:
+            return "多用尺码较分散，未形成突出特征"
+        top_row = max(size_rows, key=lambda item: (float(item.get("delta_qty") or 0), str(item.get("bag_size") or "")))
+        if float(top_row.get("qty_ratio_in_type") or 0) > cls.SMALL_BAG_MODEL_EXPAND_RATIO:
+            return f"{prefix}{top_row.get('bag_size', '')}码{cls._format_count(top_row.get('delta_qty'))}个"
+        return "多用尺码较分散，未形成突出特征"
+
+    @staticmethod
+    def _parse_combo_signature(signature: str) -> str:
+        text = str(signature or "").strip()
+        if not text:
+            return ""
+        parts = []
+        for segment in text.split("+"):
+            match = re.fullmatch(r"([A-Za-z]+)x(\d+)", segment.strip())
+            if not match:
+                parts.append(segment.strip())
+                continue
+            size, qty_text = match.groups()
+            qty = int(qty_text)
+            size_label = size.upper() + "码"
+            parts.append(f"{size_label}×{qty}" if qty > 1 else size_label)
+        return "+".join(parts)
+
+    @classmethod
+    def _describe_combo_pattern(cls, combo_rows: list[dict[str, Any]]) -> str:
+        if not combo_rows:
+            return "各替代模式较分散，未形成突出特征"
+        top_row = max(
+            combo_rows,
+            key=lambda item: (float(item.get("combo_order_cnt") or 0), float(item.get("combo_order_ratio_in_region") or 0)),
+        )
+        if float(top_row.get("combo_order_ratio_in_region") or 0) > cls.SMALL_BAG_TYPE_EXPAND_RATIO:
+            from_text = cls._parse_combo_signature(str(top_row.get("replaced_from") or ""))
+            to_text = cls._parse_combo_signature(str(top_row.get("replaced_to") or ""))
+            if from_text and to_text:
+                return f"主要表现为{from_text}被{to_text}替代"
+        return "各替代模式较分散，未形成突出特征"
+
+    @classmethod
+    def _build_small_bag_overuse_finding(cls, context: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not context:
+            return None
+        summary = context.get("summary") or {}
+        order_ratio = float(summary.get("small_bag_order_ratio") or 0.0)
+        if order_ratio <= cls.SMALL_BAG_TRIGGER_RATIO:
+            return None
+
+        size_rows = list(context.get("size_breakdown") or [])
+        combo_rows = list(context.get("combo_pattern") or [])
+
+        subtype_specs = [
+            ("加袋型", "add_order_ratio_in_small_bag", "加袋型（占小袋多用订单的{ratio}）：{detail}", "额外多加"),
+            ("组合替代型", "replace_order_ratio_in_small_bag", "组合替代型（占小袋多用订单的{ratio}）：{detail}", ""),
+            ("纯粹多袋型", "pure_order_ratio_in_small_bag", "纯粹多袋型（占小袋多用订单的{ratio}）：{detail}", "主要表现为"),
+        ]
+        subtype_lines: list[str] = []
+        subtype_details: list[dict[str, Any]] = []
+
+        for subtype, ratio_field, template, prefix in subtype_specs:
+            subtype_ratio = float(summary.get(ratio_field) or 0.0)
+            if subtype_ratio <= cls.SMALL_BAG_TYPE_EXPAND_RATIO:
+                continue
+            if subtype == "组合替代型":
+                subtype_combo_rows = [row for row in combo_rows if row.get("region") == summary.get("region")]
+                detail_text = cls._describe_combo_pattern(subtype_combo_rows)
+            else:
+                subtype_size_rows = [
+                    row for row in size_rows
+                    if row.get("small_bag_type") == subtype and row.get("delta_role") == "increase"
+                ]
+                phrase_prefix = "主要表现为额外多加" if subtype == "加袋型" else "主要表现为"
+                detail_text = cls._describe_small_bag_size(
+                    subtype_size_rows,
+                    prefix=phrase_prefix,
+                )
+                if subtype == "纯粹多袋型" and detail_text.startswith("主要表现为"):
+                    detail_text = detail_text.replace("主要表现为", "主要表现为", 1)
+                    detail_text = detail_text.replace("码", "码多用", 1) if "未形成突出特征" not in detail_text else detail_text
+            subtype_lines.append(template.format(ratio=cls._format_pct(subtype_ratio), detail=detail_text))
+            subtype_details.append({
+                "type": subtype,
+                "ratio": subtype_ratio,
+                "detail": detail_text,
+            })
+
+        if not subtype_lines:
+            top_type, top_ratio = max(
+                (
+                    ("加袋型", float(summary.get("add_order_ratio_in_small_bag") or 0.0)),
+                    ("组合替代型", float(summary.get("replace_order_ratio_in_small_bag") or 0.0)),
+                    ("纯粹多袋型", float(summary.get("pure_order_ratio_in_small_bag") or 0.0)),
+                ),
+                key=lambda item: item[1],
+            )
+            if top_type == "组合替代型":
+                top_detail = cls._describe_combo_pattern(combo_rows)
+            else:
+                top_detail = cls._describe_small_bag_size(
+                    [
+                        row for row in size_rows
+                        if row.get("small_bag_type") == top_type and row.get("delta_role") == "increase"
+                    ],
+                    prefix="主要表现为额外多加" if top_type == "加袋型" else "主要表现为",
+                )
+                if top_type == "纯粹多袋型" and "未形成突出特征" not in top_detail:
+                    top_detail = top_detail.replace("码", "码多用", 1)
+            subtype_lines.append(f"主要类型为{top_type}（占比{cls._format_pct(top_ratio)}），{top_detail}。")
+            subtype_details.append({"type": top_type, "ratio": top_ratio, "detail": top_detail})
+
+        summary_parts = [f"小袋多用订单占比{cls._format_pct(order_ratio)}。", *subtype_lines]
+        extra_cost = float(summary.get("small_bag_extra_cost") or 0.0)
+        if extra_cost > 0:
+            summary_parts.append(f"月度额外成本约¥{round(extra_cost):,.0f}。")
 
         return {
-            "label": "使用基本合规",
-            "severity": "🟢",
-            "summary": "各型号实际使用结构与理论最优结构基本一致，偏差均在±10%宽容区间内。",
-            "extra_cost": 0.0,
-            "details": [],
+            "label": "未合并装袋（小袋多用）",
+            "severity": "🔴" if order_ratio >= 0.20 else "🟡",
+            "summary": "<br>".join(summary_parts),
+            "extra_cost": round(extra_cost, 2),
+            "details": subtype_details,
+            "small_bag_order_ratio": order_ratio,
         }
+
+    @classmethod
+    def _combine_usage_findings(cls, findings: list[dict[str, Any]]) -> dict[str, Any]:
+        if not findings:
+            return {
+                "label": "使用基本合规",
+                "severity": "🟢",
+                "summary": "各型号实际使用结构与理论最优结构基本一致，偏差均在±10%宽容区间内。",
+                "extra_cost": 0.0,
+                "details": [],
+                "findings": [],
+            }
+        if len(findings) == 1:
+            finding = dict(findings[0])
+            finding["findings"] = findings
+            return finding
+
+        total_extra_cost = round(sum(float(item.get("extra_cost") or 0.0) for item in findings), 2)
+        return {
+            "label": " + ".join(str(item.get("label") or "") for item in findings if item.get("label")),
+            "severity": cls._pick_highest_severity(findings),
+            "summary": "<br><br>".join(str(item.get("summary") or "") for item in findings if item.get("summary")),
+            "extra_cost": total_extra_cost,
+            "details": findings,
+            "findings": findings,
+        }
+
+    @classmethod
+    def _build_usage_diagnosis(
+        cls,
+        d: RegionDiagnosis,
+        small_bag_context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        findings: list[dict[str, Any]] = []
+        large_bag_finding = cls._build_large_bag_usage_finding(d)
+        if large_bag_finding:
+            findings.append(large_bag_finding)
+
+        small_bag_finding = cls._build_small_bag_overuse_finding(small_bag_context)
+        if small_bag_finding:
+            findings.append(small_bag_finding)
+        elif small_bag_context is None and not large_bag_finding:
+            bundle_issue_finding = cls._build_bundle_issue_finding(d)
+            if bundle_issue_finding:
+                findings.append(bundle_issue_finding)
+
+        return cls._combine_usage_findings(findings)
 
     @classmethod
     def _build_stock_diagnosis(cls, d: RegionDiagnosis) -> dict[str, Any]:
@@ -968,16 +1279,18 @@ class DiagnosisService:
             and metric.usage_ratio_gap > 0
         ]
         underused_sizes = [size for size in usage_problem_sizes if size not in overused_sizes]
-        if usage_label == "大袋小用":
+        if "大袋小用" in str(usage_label):
             if overused_sizes and underused_sizes:
                 actions.append(
                     f"复盘{'、'.join(overused_sizes[:3])}码替代{'、'.join(underused_sizes[:3])}码的场景，按理论配比纠偏，避免大袋小用。"
                 )
             else:
                 actions.append("复盘门店领用与订购配比，压降偏大尺码替代使用。")
+        if "未合并装袋" in str(usage_label):
+            actions.append("复核合包规则与门店执行，重点减少重复拆分装袋和额外加袋。")
         elif usage_label == "合包问题":
             actions.append("复核合包规则与门店执行，减少偏小尺码拆分装袋。")
-        elif d.composite_score < 85:
+        elif d.composite_score < 85 and usage_label == "使用基本合规":
             actions.append("持续复核理论配比与门店业务场景，防止偏差进一步扩大。")
         return actions[:3]
 
@@ -1200,7 +1513,12 @@ class DiagnosisService:
         if green:
             parts.append(f"{len(green)}个大区得分85分以上，运行正常。")
         if red:
-            usage_labels = {str((d.usage_diagnosis or {}).get("label", "")) for d in red}
+            usage_labels = {
+                str(item.get("label", ""))
+                for d in red
+                for item in ((d.usage_diagnosis or {}).get("findings") or [d.usage_diagnosis or {}])
+                if item and item.get("label")
+            }
             stock_labels = {
                 item.get("label", "")
                 for d in red
@@ -1236,9 +1554,11 @@ class DiagnosisService:
                     severity += 2 if diff_pp >= 0.3 else 1
 
             root_cause_lines = []
-            usage_summary = str(usage_diagnosis.get("summary", "")).strip()
-            if usage_summary and usage_diagnosis.get("label") != "使用基本合规":
-                root_cause_lines.append(usage_summary)
+            usage_findings = usage_diagnosis.get("findings") or [usage_diagnosis]
+            for finding in usage_findings:
+                usage_summary = str((finding or {}).get("summary", "")).strip()
+                if usage_summary and (finding or {}).get("label") != "使用基本合规":
+                    root_cause_lines.append(usage_summary)
             root_cause_lines.extend(
                 item.get("summary", "")
                 for item in stock_diagnosis.get("findings", [])

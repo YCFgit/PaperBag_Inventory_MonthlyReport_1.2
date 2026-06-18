@@ -459,6 +459,9 @@ def test_project_report_template_uses_ai_monthly_regional_ratio_source_name() ->
     assert "## 四、库存结构与型号错配（重点关注）" in template_text
     assert "## 五、使用配比与盘点异常（合规管控）" in template_text
     assert "## 六、纸袋使用合规率与库存健康度诊断（AI驱动）" in template_text
+    assert "小袋多用归因读取本地 SQL 导出 CSV" in template_text
+    assert "usage_findings = detail.usage_diagnosis.findings" in template_text
+    assert "额外成本合计" in template_text
     assert "## 七、AI 重点行动清单（可执行・分级）" in template_text
     assert "库存与趋势判断" in template_text
     assert "本月优先执行事项" in template_text

@@ -4,8 +4,17 @@
 const puppeteer = require('puppeteer-core');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+const { execFileSync } = require('child_process');
 
-const CHROME_PATH = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+const BROWSER_CANDIDATES = [
+  process.env.CHROME_PATH,
+  process.env.PUPPETEER_EXECUTABLE_PATH,
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+  '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
+  '/Applications/Chromium.app/Contents/MacOS/Chromium',
+].filter(Boolean);
 
 const CSS = `
   @page { size: A4; margin: 1.05cm 1.05cm 1.35cm 1.05cm; }
@@ -141,27 +150,107 @@ async function main() {
   const tmpHtml = '/tmp/report_pdf_temp.html';
   fs.writeFileSync(tmpHtml, htmlDoc, 'utf-8');
 
-  const browser = await puppeteer.launch({
-    executablePath: CHROME_PATH,
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  });
+  const browserPath = resolveBrowserPath();
+  if (!browserPath) {
+    throw new Error('No supported browser executable found. Set CHROME_PATH or install Google Chrome / Edge / Chromium.');
+  }
 
-  const page = await browser.newPage();
-  await page.goto(`file://${tmpHtml}`, { waitUntil: 'networkidle0' });
-  await page.pdf({
-    path: pdfPath,
-    format: 'A4',
-    margin: { top: '1.05cm', bottom: '1.35cm', left: '1.05cm', right: '1.05cm' },
-    displayHeaderFooter: true,
-    headerTemplate: '<div></div>',
-    footerTemplate: '<div style="width:100%;font-size:8px;color:#94A3B8;padding:0 1.05cm;display:flex;justify-content:space-between;font-family:-apple-system, PingFang SC, Microsoft YaHei, sans-serif;"><span>纸袋月度库存AI分析报告</span><span><span class="pageNumber"></span> / <span class="totalPages"></span></span></div>',
-    printBackground: true,
-  });
+  try {
+    await generatePdfWithPuppeteer(browserPath, tmpHtml, pdfPath);
+  } catch (puppeteerErr) {
+    try {
+      generatePdfWithChromeCli(browserPath, tmpHtml, pdfPath);
+    } catch (cliErr) {
+      const error = new Error(
+        `Both Puppeteer and Chrome CLI PDF generation failed.\n` +
+        `Puppeteer error: ${formatError(puppeteerErr)}\n` +
+        `Chrome CLI error: ${formatError(cliErr)}`
+      );
+      error.cause = { puppeteerErr, cliErr };
+      throw error;
+    }
+  } finally {
+    if (fs.existsSync(tmpHtml)) {
+      fs.unlinkSync(tmpHtml);
+    }
+  }
 
-  await browser.close();
-  fs.unlinkSync(tmpHtml);
   console.log(`PDF generated: ${pdfPath}`);
+}
+
+function resolveBrowserPath() {
+  for (const candidate of BROWSER_CANDIDATES) {
+    if (candidate && fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+async function generatePdfWithPuppeteer(browserPath, htmlPath, pdfPath) {
+  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbag-pdf-profile-'));
+  let browser = null;
+  try {
+    browser = await puppeteer.launch({
+      executablePath: browserPath,
+      headless: true,
+      userDataDir,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--allow-file-access-from-files',
+      ],
+    });
+
+    const page = await browser.newPage();
+    await page.goto(`file://${htmlPath}`, { waitUntil: 'networkidle0' });
+    await page.pdf({
+      path: pdfPath,
+      format: 'A4',
+      margin: { top: '1.05cm', bottom: '1.35cm', left: '1.05cm', right: '1.05cm' },
+      displayHeaderFooter: true,
+      headerTemplate: '<div></div>',
+      footerTemplate: '<div style="width:100%;font-size:8px;color:#94A3B8;padding:0 1.05cm;display:flex;justify-content:space-between;font-family:-apple-system, PingFang SC, Microsoft YaHei, sans-serif;"><span>纸袋月度库存AI分析报告</span><span><span class="pageNumber"></span> / <span class="totalPages"></span></span></div>',
+      printBackground: true,
+    });
+  } finally {
+    if (browser) {
+      await browser.close();
+    }
+    fs.rmSync(userDataDir, { recursive: true, force: true });
+  }
+}
+
+function generatePdfWithChromeCli(browserPath, htmlPath, pdfPath) {
+  execFileSync(
+    browserPath,
+    [
+      '--headless=new',
+      '--disable-gpu',
+      '--no-sandbox',
+      '--allow-file-access-from-files',
+      '--print-to-pdf-no-header',
+      `--print-to-pdf=${pdfPath}`,
+      `file://${htmlPath}`,
+    ],
+    { stdio: 'pipe' }
+  );
+
+  if (!fs.existsSync(pdfPath) || fs.statSync(pdfPath).size === 0) {
+    throw new Error('Chrome CLI reported success but no PDF file was created.');
+  }
+}
+
+function formatError(err) {
+  if (!err) {
+    return 'unknown error';
+  }
+  if (typeof err === 'string') {
+    return err;
+  }
+  return err.stack || err.message || String(err);
 }
 
 main().catch((err) => {

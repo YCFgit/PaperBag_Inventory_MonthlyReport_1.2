@@ -405,6 +405,224 @@ def test_usage_diagnosis_can_classify_bundle_issue() -> None:
     assert "合包执行不足" in detail["usage_diagnosis"]["summary"]
 
 
+def test_load_small_bag_input_rows_normalizes_counts_and_ratios(tmp_path) -> None:
+    service = DiagnosisService()
+    service.INPUT_DATA_DIR = tmp_path
+
+    (tmp_path / "2026-05小袋多用总览.csv").write_text(
+        "region,period,total_order_cnt,small_bag_order_cnt,small_bag_order_ratio,small_bag_extra_bag_qty,small_bag_extra_cost,add_order_cnt,replace_order_cnt,pure_order_cnt,add_order_ratio_in_small_bag,replace_order_ratio_in_small_bag,pure_order_ratio_in_small_bag,add_extra_bag_qty,replace_extra_bag_qty,pure_extra_bag_qty,add_extra_cost,replace_extra_cost,pure_extra_cost\n"
+        "华东一区,2026-05,1000,180,0.18,240,2100.50,80,60,40,0.4444,0.3333,0.2222,100,80,60,800.1,700.2,600.2\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "2026-05小袋多用尺码归因明细.csv").write_text(
+        "region,period,small_bag_type,delta_role,bag_size,order_cnt,delta_qty,qty_ratio_in_type\n"
+        "华东一区,2026-05,加袋型,increase,S,50,60,0.6\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "2026-05小袋多用组合替代模式.csv").write_text(
+        "region,period,replaced_from,replaced_to,combo_order_cnt,combo_extra_cost,combo_order_ratio_in_region\n"
+        "华东一区,2026-05,XLx1,Mx1+Lx1,30,100.5,0.5\n",
+        encoding="utf-8",
+    )
+
+    rows = service.load_small_bag_input_rows("2026-05")
+
+    assert rows is not None
+    assert rows["summary"][0]["total_order_cnt"] == 1000
+    assert rows["summary"][0]["small_bag_order_ratio"] == 0.18
+    assert rows["summary"][0]["small_bag_extra_cost"] == 2100.5
+    assert rows["size_breakdown"][0]["order_cnt"] == 50
+    assert rows["size_breakdown"][0]["qty_ratio_in_type"] == 0.6
+    assert rows["combo_pattern"][0]["combo_order_cnt"] == 30
+    assert rows["combo_pattern"][0]["combo_order_ratio_in_region"] == 0.5
+
+
+def test_usage_diagnosis_uses_small_bag_csv_findings_when_triggered() -> None:
+    service = DiagnosisService()
+
+    diagnosis = service.build_diagnosis(
+        theory_rows=[{
+            "region": "华东一区",
+            "period": "2026-05",
+            "xs_theory_qty": 200,
+            "s_theory_qty": 200,
+            "m_theory_qty": 200,
+            "l_theory_qty": 200,
+            "xl_theory_qty": 200,
+            "total_theory_qty": 1000,
+        }],
+        actual_rows=[{
+            "region": "华东一区",
+            "period": "2026-05",
+            "xs_actual_qty": 200,
+            "s_actual_qty": 200,
+            "m_actual_qty": 200,
+            "l_actual_qty": 200,
+            "xl_actual_qty": 200,
+            "total_actual_qty": 1000,
+        }],
+        stock_rows=[{
+            "region": "华东一区",
+            "period": "2026-05",
+            "xs_stock_qty": 1000,
+            "s_stock_qty": 0,
+            "m_stock_qty": 0,
+            "l_stock_qty": 0,
+            "xl_stock_qty": 0,
+            "total_stock_qty": 1000,
+        }],
+        report_month="2026-05",
+        small_bag_summary_rows=[{
+            "region": "华东一区",
+            "period": "2026-05",
+            "total_order_cnt": 1000,
+            "small_bag_order_cnt": 180,
+            "small_bag_order_ratio": 0.18,
+            "small_bag_extra_bag_qty": 260,
+            "small_bag_extra_cost": 2100.0,
+            "add_order_cnt": 81,
+            "replace_order_cnt": 72,
+            "pure_order_cnt": 27,
+            "add_order_ratio_in_small_bag": 0.45,
+            "replace_order_ratio_in_small_bag": 0.40,
+            "pure_order_ratio_in_small_bag": 0.15,
+            "add_extra_bag_qty": 120,
+            "replace_extra_bag_qty": 100,
+            "pure_extra_bag_qty": 40,
+            "add_extra_cost": 700.0,
+            "replace_extra_cost": 900.0,
+            "pure_extra_cost": 500.0,
+        }],
+        small_bag_size_rows=[
+            {
+                "region": "华东一区",
+                "period": "2026-05",
+                "small_bag_type": "加袋型",
+                "delta_role": "increase",
+                "bag_size": "S",
+                "order_cnt": 70,
+                "delta_qty": 600,
+                "qty_ratio_in_type": 0.60,
+            },
+            {
+                "region": "华东一区",
+                "period": "2026-05",
+                "small_bag_type": "纯粹多袋型",
+                "delta_role": "increase",
+                "bag_size": "XS",
+                "order_cnt": 30,
+                "delta_qty": 320,
+                "qty_ratio_in_type": 0.80,
+            },
+        ],
+        small_bag_combo_rows=[{
+            "region": "华东一区",
+            "period": "2026-05",
+            "replaced_from": "XLx1",
+            "replaced_to": "Mx1+Lx1",
+            "combo_order_cnt": 40,
+            "combo_extra_cost": 100.0,
+            "combo_order_ratio_in_region": 0.40,
+        }],
+    )
+
+    detail = diagnosis["problem_light_details"][0]
+    usage = detail["usage_diagnosis"]
+
+    assert usage["label"] == "未合并装袋（小袋多用）"
+    assert usage["severity"] == "🟡"
+    assert "小袋多用订单占比18.0%" in usage["summary"]
+    assert "加袋型（占小袋多用订单的45.0%）：主要表现为额外多加S码600个" in usage["summary"]
+    assert "组合替代型（占小袋多用订单的40.0%）：主要表现为XL码被M码+L码替代" in usage["summary"]
+    assert "纯粹多袋型（占小袋多用订单的15.0%）：主要表现为XS码多用320个" in usage["summary"]
+    assert usage["extra_cost"] == 2100.0
+
+
+def test_usage_diagnosis_combines_large_bag_and_small_bag_findings() -> None:
+    service = DiagnosisService()
+
+    diagnosis = service.build_diagnosis(
+        theory_rows=[{
+            "region": "华东一区",
+            "period": "2026-05",
+            "xs_theory_qty": 700,
+            "s_theory_qty": 100,
+            "m_theory_qty": 100,
+            "l_theory_qty": 50,
+            "xl_theory_qty": 50,
+            "total_theory_qty": 1000,
+        }],
+        actual_rows=[{
+            "region": "华东一区",
+            "period": "2026-05",
+            "xs_actual_qty": 100,
+            "s_actual_qty": 50,
+            "m_actual_qty": 800,
+            "l_actual_qty": 25,
+            "xl_actual_qty": 25,
+            "total_actual_qty": 1000,
+        }],
+        stock_rows=[{
+            "region": "华东一区",
+            "period": "2026-05",
+            "xs_stock_qty": 700,
+            "s_stock_qty": 100,
+            "m_stock_qty": 100,
+            "l_stock_qty": 50,
+            "xl_stock_qty": 50,
+            "total_stock_qty": 1000,
+        }],
+        report_month="2026-05",
+        small_bag_summary_rows=[{
+            "region": "华东一区",
+            "period": "2026-05",
+            "total_order_cnt": 1000,
+            "small_bag_order_cnt": 220,
+            "small_bag_order_ratio": 0.22,
+            "small_bag_extra_bag_qty": 300,
+            "small_bag_extra_cost": 1200.0,
+            "add_order_cnt": 80,
+            "replace_order_cnt": 100,
+            "pure_order_cnt": 40,
+            "add_order_ratio_in_small_bag": 0.36,
+            "replace_order_ratio_in_small_bag": 0.45,
+            "pure_order_ratio_in_small_bag": 0.18,
+            "add_extra_bag_qty": 100,
+            "replace_extra_bag_qty": 140,
+            "pure_extra_bag_qty": 60,
+            "add_extra_cost": 300.0,
+            "replace_extra_cost": 700.0,
+            "pure_extra_cost": 200.0,
+        }],
+        small_bag_size_rows=[{
+            "region": "华东一区",
+            "period": "2026-05",
+            "small_bag_type": "加袋型",
+            "delta_role": "increase",
+            "bag_size": "S",
+            "order_cnt": 40,
+            "delta_qty": 120,
+            "qty_ratio_in_type": 0.50,
+        }],
+        small_bag_combo_rows=[{
+            "region": "华东一区",
+            "period": "2026-05",
+            "replaced_from": "XLx1",
+            "replaced_to": "Mx2",
+            "combo_order_cnt": 50,
+            "combo_extra_cost": 200.0,
+            "combo_order_ratio_in_region": 0.50,
+        }],
+    )
+
+    usage = diagnosis["red_light_details"][0]["usage_diagnosis"]
+
+    assert usage["label"] == "大袋小用 + 未合并装袋（小袋多用）"
+    assert len(usage["findings"]) == 2
+    assert usage["severity"] == "🔴"
+    assert usage["extra_cost"] > 1200.0
+
+
 def test_input_csv_reader_supports_gbk_region_names(tmp_path) -> None:
     path = tmp_path / "2026-05理论需求量.csv"
     path.write_text(
@@ -557,3 +775,31 @@ def test_diagnosis_inventory_sql_uses_zd010_and_zd2023_size_map() -> None:
     assert "ELSE '其他'" not in sql
     assert "MN2024XS" not in sql
     assert "ZD011" not in sql
+
+
+def test_small_bag_overuse_summary_sql_uses_v13_classification_rules() -> None:
+    sql = DiagnosisService().load_and_render_sql("diagnosis_small_bag_overuse_summary.sql", "2026-05")
+
+    assert "delta_total > 0 AND has_decrease = 1 AND has_increase = 1 THEN '组合替代型'" in sql
+    assert "delta_total > 0 AND has_decrease = 0 AND has_new_added_size = 1 THEN '加袋型'" in sql
+    assert "delta_total > 0 THEN '纯粹多袋型'" in sql
+    assert "GREATEST(COALESCE(t.cost, 0) - COALESCE(t.opt_cost, 0), 0) AS extra_cost" in sql
+    assert "small_bag_order_ratio" in sql
+    assert "2026-05" in sql
+
+
+def test_small_bag_overuse_size_breakdown_sql_outputs_increase_and_decrease_roles() -> None:
+    sql = DiagnosisService().load_and_render_sql("diagnosis_small_bag_overuse_size_breakdown.sql", "2026-05")
+
+    assert "'increase' AS delta_role" in sql
+    assert "'decrease' AS delta_role" in sql
+    assert "qty_ratio_in_type" in sql
+    assert "ORDER BY region, period, small_bag_type, delta_role, delta_qty DESC" in sql
+
+
+def test_small_bag_overuse_combo_pattern_sql_builds_replacement_signatures() -> None:
+    sql = DiagnosisService().load_and_render_sql("diagnosis_small_bag_overuse_combo_pattern.sql", "2026-05")
+
+    assert "CONCAT_WS('+', SORT_ARRAY(COLLECT_LIST(CONCAT(bag_size, 'x', CAST(raw_delta AS STRING))))) AS replaced_to" in sql
+    assert "CONCAT_WS('+', SORT_ARRAY(COLLECT_LIST(CONCAT(bag_size, 'x', CAST(-raw_delta AS STRING))))) AS replaced_from" in sql
+    assert "combo_order_ratio_in_region" in sql
