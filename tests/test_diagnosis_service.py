@@ -532,9 +532,9 @@ def test_usage_diagnosis_uses_small_bag_csv_findings_when_triggered() -> None:
     assert usage["label"] == "未合并装袋（小袋多用）"
     assert usage["severity"] == "🟡"
     assert "小袋多用订单占比18.0%" in usage["summary"]
-    assert "加袋型（占小袋多用订单的45.0%）：主要表现为额外多加S码600个" in usage["summary"]
-    assert "组合替代型（占小袋多用订单的40.0%）：主要表现为XL码被M码+L码替代" in usage["summary"]
-    assert "纯粹多袋型（占小袋多用订单的15.0%）：主要表现为XS码多用320个" in usage["summary"]
+    assert "主要为加袋型（占小袋多用订单的45.0%）" in usage["summary"]
+    assert "主要表现为额外多加S码600个" in usage["summary"]
+    assert "<br>" not in usage["summary"]
     assert usage["extra_cost"] == 2100.0
 
 

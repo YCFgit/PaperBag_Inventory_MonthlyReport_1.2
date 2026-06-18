@@ -1103,15 +1103,23 @@ class DiagnosisService:
             subtype_lines.append(f"主要类型为{top_type}（占比{cls._format_pct(top_ratio)}），{top_detail}。")
             subtype_details.append({"type": top_type, "ratio": top_ratio, "detail": top_detail})
 
-        summary_parts = [f"小袋多用订单占比{cls._format_pct(order_ratio)}。", *subtype_lines]
         extra_cost = float(summary.get("small_bag_extra_cost") or 0.0)
+        main_detail = max(subtype_details, key=lambda item: float(item.get("ratio") or 0.0)) if subtype_details else None
+        if main_detail:
+            main_type = str(main_detail.get("type") or "主要类型")
+            main_ratio = cls._format_pct(float(main_detail.get("ratio") or 0.0))
+            main_text = str(main_detail.get("detail") or "未形成突出特征").strip().rstrip("。")
+            summary_text = f"小袋多用订单占比{cls._format_pct(order_ratio)}，主要为{main_type}（占小袋多用订单的{main_ratio}），{main_text}"
+        else:
+            summary_text = f"小袋多用订单占比{cls._format_pct(order_ratio)}，存在未合并装袋问题"
         if extra_cost > 0:
-            summary_parts.append(f"月度额外成本约¥{round(extra_cost):,.0f}。")
+            summary_text += f"，月度额外成本约¥{round(extra_cost):,.0f}"
+        summary_text += "。"
 
         return {
             "label": "未合并装袋（小袋多用）",
             "severity": "🔴" if order_ratio >= 0.20 else "🟡",
-            "summary": "<br>".join(summary_parts),
+            "summary": summary_text,
             "extra_cost": round(extra_cost, 2),
             "details": subtype_details,
             "small_bag_order_ratio": order_ratio,

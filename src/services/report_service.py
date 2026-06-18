@@ -1947,15 +1947,58 @@ class ReportService:
             parts.append(f"{issue_count}类")
         return "｜".join(parts) if parts else str(item.get("priority_reason") or item.get("priority_rule") or "待补充")
 
+    def _extract_ai_usage_ratio_brief(self, clean: str) -> tuple[float, str] | None:
+        match = re.search(
+            r"([A-Z]+)码：理论使用需求占比([0-9.]+%)，实际使用占比([0-9.]+%)，库存占比([0-9.]+%)",
+            clean,
+        )
+        if not match:
+            return None
+        size_text, theory_text, actual_text, _stock_text = match.groups()
+        theory_value = float(theory_text.rstrip("%"))
+        actual_value = float(actual_text.rstrip("%"))
+        gap = actual_value - theory_value
+        direction = "高于" if gap >= 0 else "低于"
+        return abs(gap), f"{size_text}码实际{actual_text}，{direction}理论{theory_text}"
+
+    def _extract_ai_stock_brief(self, clean: str) -> tuple[int, float, str] | None:
+        match = re.search(
+            r"([A-Z]+)码库存深度(?:仅)?([0-9.]+)月，库存偏差([+-]?[0-9.]+)个百分点，(.+)$",
+            clean,
+        )
+        if not match:
+            return None
+        size_text, depth_text, gap_text, tail_text = match.groups()
+        gap_value = float(gap_text)
+        tail_text = tail_text.strip()
+        if "无法支撑" in tail_text:
+            return 2, abs(gap_value), f"{size_text}码库存{depth_text}月，低{abs(gap_value):g}pct"
+        if "积压风险" in tail_text:
+            return 1, abs(gap_value), f"{size_text}码库存{depth_text}月，高{abs(gap_value):g}pct"
+        if "需在后续订购中补齐" in tail_text:
+            return 2, abs(gap_value), f"{size_text}码库存{depth_text}月，低{abs(gap_value):g}pct"
+        return 0, abs(gap_value), f"{size_text}码库存{depth_text}月，偏差{gap_value:g}pct"
+
     def _build_ai_root_cause_brief(self, item: dict[str, Any]) -> str:
         raw = str(item.get("root_cause_multiline") or item.get("root_cause") or "").strip()
         if not raw:
             return "待补充"
         parts = [part.strip() for part in re.split(r"(?:<br>|；|;)", raw) if part.strip()]
         simplified: list[str] = []
+        usage_ratio_candidates: list[tuple[float, str]] = []
+        stock_candidates: list[tuple[int, float, str]] = []
+        has_large_bag_signal = False
         for part in parts:
             clean = re.sub(r"^\d+\.\s*", "", part)
             clean = re.sub(r"<[^>]+>", "", clean).strip()
+            usage_ratio_brief = self._extract_ai_usage_ratio_brief(clean)
+            if usage_ratio_brief:
+                usage_ratio_candidates.append(usage_ratio_brief)
+                continue
+            stock_brief = self._extract_ai_stock_brief(clean)
+            if stock_brief:
+                stock_candidates.append(stock_brief)
+                continue
             overstock_match = re.search(r"(.+?)期末库存.*?超储(\d+)个", clean)
             if overstock_match:
                 model_text, qty_text = overstock_match.groups()
@@ -1969,28 +2012,19 @@ class ReportService:
             if "理论使用需求占比" in clean or "实际使用占比" in clean and "大袋小用" not in clean:
                 continue
             if "大袋小用" in clean:
-                simplified.append("大袋小用偏高")
+                has_large_bag_signal = True
                 continue
             if "小袋多用订单占比" in clean:
                 match = re.search(r"小袋多用订单占比([^。；<]+)", clean)
                 ratio_text = match.group(1).strip() if match else ""
                 simplified.append(f"小袋多用{ratio_text}".rstrip("。"))
                 continue
-            if "无法支撑门店按推荐方案使用" in clean:
-                size_match = re.search(r"([A-Z]+)码", clean)
-                size_text = size_match.group(1) + "码" if size_match else "目标尺码"
-                simplified.append(f"{size_text}缺口，暂不纠偏")
-                continue
-            if "存在积压风险" in clean:
-                size_match = re.search(r"([A-Z]+)码", clean)
-                size_text = size_match.group(1) + "码" if size_match else "相关尺码"
-                simplified.append(f"{size_text}偏高，先去化")
-                continue
-            if "需在后续订购中补齐" in clean:
-                size_match = re.search(r"([A-Z]+)码", clean)
-                size_text = size_match.group(1) + "码" if size_match else "相关尺码"
-                simplified.append(f"{size_text}偏低，后续补齐")
-                continue
+        if usage_ratio_candidates:
+            simplified.insert(0, max(usage_ratio_candidates, key=lambda item: item[0])[1])
+        elif has_large_bag_signal:
+            simplified.insert(0, "大袋小用偏高")
+        if stock_candidates:
+            simplified.append(max(stock_candidates, key=lambda item: (item[0], item[1]))[2])
         deduped: list[str] = []
         for part in simplified:
             if part not in deduped:

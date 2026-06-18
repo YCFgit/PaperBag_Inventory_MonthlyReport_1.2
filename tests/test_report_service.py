@@ -500,6 +500,8 @@ def test_report_service_builds_brief_ai_action_fields(tmp_path: Path) -> None:
         "issue_type_label": "大袋小用 + 未合并装袋（小袋多用） + 库存无法支持合理使用 + 库存结构不科学",
         "root_cause_multiline": (
             "S码门店实际使用占比低于理论占比，M码实际使用占比偏高，地区尺码订购与终端需求不匹配，存在大袋小用并带来额外费用。<br>"
+            "1. S码：理论使用需求占比37.8%，实际使用占比0.8%，库存占比1.2%<br>"
+            "2. M码：理论使用需求占比15.7%，实际使用占比70.0%，库存占比55.3%<br>"
             "小袋多用订单占比34.8%。<br>"
             "S码库存深度仅0.09月，库存偏差-36.9个百分点，无法支撑门店按推荐方案使用。<br>"
             "M码库存深度14.21月，库存偏差+39.1个百分点，存在积压风险。"
@@ -514,7 +516,7 @@ def test_report_service_builds_brief_ai_action_fields(tmp_path: Path) -> None:
     }
 
     assert service._build_ai_issue_type_brief(item["issue_type_label"]) == "使用失衡 + 库存受限"
-    assert service._build_ai_root_cause_brief(item) == "大袋小用偏高；小袋多用34.8%；S码缺口，暂不纠偏"
+    assert service._build_ai_root_cause_brief(item) == "M码实际70.0%，高于理论15.7%；小袋多用34.8%；S码库存0.09月，低36.9pct"
     assert service._build_ai_business_plan_brief(item) == "补S码至1个月<br>停M码去化<br>纠偏M替S、L、XL"
     assert service._build_ai_review_metric_brief(item) == "综合分≥70（现49.45）"
 
