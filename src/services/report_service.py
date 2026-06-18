@@ -88,14 +88,21 @@ class ReportService:
                 "priority_reason": item.get("priority_reason") or self._build_ai_priority_reason_text(item),
                 "priority_rule": item.get("priority_rule") or self._build_ai_priority_rule_text(item),
                 "review_metric_text": item.get("review_metric_text") or self._build_ai_review_metric_text(item),
+                "issue_type_brief": self._build_ai_issue_type_brief(
+                    item.get("issue_type_label") or self._describe_ai_issue_type(item)
+                ),
+                "priority_reason_brief": self._build_ai_priority_reason_brief(item),
+                "root_cause_brief": self._build_ai_root_cause_brief(item),
+                "business_plan_brief": self._build_ai_business_plan_brief(item),
+                "review_metric_brief": self._build_ai_review_metric_brief(item),
             }
             for item in ai_insights.get("regional_actions", [])
             if isinstance(item, dict) and item.get("priority") in {"P1", "P2"}
         ]
         ai_display_summary = (
-            f"{context.report_month} AI洞察保留{len(ai_display_actions)}个重点区域，"
-            f"其中P1优先级{sum(1 for item in ai_display_actions if item.get('priority') == 'P1')}个、"
-            f"P2优先级{sum(1 for item in ai_display_actions if item.get('priority') == 'P2')}个。"
+            f"本期保留{len(ai_display_actions)}个重点区域，"
+            f"P1 {sum(1 for item in ai_display_actions if item.get('priority') == 'P1')}个，"
+            f"P2 {sum(1 for item in ai_display_actions if item.get('priority') == 'P2')}个。"
             if ai_display_actions
             else "本期未识别到需要展示的P1、P2级AI洞察。"
         )
@@ -1742,8 +1749,8 @@ class ReportService:
                 "key": "inventory",
                 "label": "库销与库存类",
                 "tone": "blue",
-                "description": "聚焦库销超标、高库存去化、补货缺口和库存结构动作。",
-                "empty_message": f"本期暂无{scope_label + ' ' if scope_label else ''}库销与库存类重点动作，保持常规跟踪即可。",
+                "description": "聚焦高库存、缺口补货与结构修正。",
+                "empty_message": f"本期暂无{scope_label + ' ' if scope_label else ''}库销与库存类动作，常规跟踪即可。",
                 "preview_items": inventory_preview_items,
                 "all_items": inventory_all_items,
             },
@@ -1751,8 +1758,8 @@ class ReportService:
                 "key": "usage",
                 "label": "纸袋使用合规类",
                 "tone": "orange",
-                "description": "聚焦大袋小用、尺码错配与纸袋使用合规动作。",
-                "empty_message": f"本期暂无{scope_label + ' ' if scope_label else ''}纸袋使用合规类重点动作，维持当前执行口径。",
+                "description": "聚焦大袋小用、小袋多用与尺码纠偏。",
+                "empty_message": f"本期暂无{scope_label + ' ' if scope_label else ''}纸袋使用合规类动作，维持当前口径。",
                 "preview_items": usage_preview_items,
                 "all_items": usage_all_items,
             },
@@ -1760,8 +1767,8 @@ class ReportService:
                 "key": "terminal",
                 "label": "终端异常 / 盘点类",
                 "tone": "yellow",
-                "description": "聚焦异常订单、门店执行偏差与盘点差异整改。",
-                "empty_message": f"本期暂无{scope_label + ' ' if scope_label else ''}终端异常 / 盘点类重点动作，持续监控即可。",
+                "description": "聚焦异常订单与盘点差异整改。",
+                "empty_message": f"本期暂无{scope_label + ' ' if scope_label else ''}终端异常 / 盘点类动作，持续监控即可。",
                 "preview_items": terminal_preview_items,
                 "all_items": terminal_all_items,
             },
@@ -1811,7 +1818,7 @@ class ReportService:
             "items": preview_items,
             "total_count": total_count,
             "display_count": display_count,
-            "count_label": f"{total_count}项重点动作" if total_count else "暂无重点动作",
+            "count_label": f"{total_count}项动作" if total_count else "暂无动作",
             "priority_mix": f"P1 {p1_count}项 / P2 {p2_count}项" if total_count else "本期无重点动作",
             "issue_snapshot": issue_snapshot,
             "display_hint": (
@@ -1909,6 +1916,123 @@ class ReportService:
             f"净盘差{self._strong_html(self._fmt_int(baseline.get('stocktake_net_loss_qty'))) if baseline.get('stocktake_net_loss_qty') is not None else '无'}",
         ]
         return "；".join(parts)
+
+    def _build_ai_issue_type_brief(self, value: Any) -> str:
+        text = self._normalize_ai_issue_type_label(value)
+        parts = [part.strip() for part in text.split(" + ") if part.strip()]
+        has_usage = any(part in {"大袋小用", "未合并装袋（小袋多用）", "合包问题"} for part in parts)
+        has_blocking_stock = any(part == "库存无法支持合理使用" for part in parts)
+        has_structure_stock = any(part == "库存结构不科学" for part in parts)
+        brief_parts: list[str] = []
+        if has_usage:
+            brief_parts.append("使用失衡")
+        if has_blocking_stock:
+            brief_parts.append("库存受限")
+        elif has_structure_stock:
+            brief_parts.append("库存错配")
+        if not brief_parts:
+            return text
+        return " + ".join(brief_parts)
+
+    def _build_ai_priority_reason_brief(self, item: dict[str, Any]) -> str:
+        baseline = item.get("baseline", {}) if isinstance(item, dict) else {}
+        parts: list[str] = []
+        if baseline.get("diagnosis_composite_score") is not None:
+            parts.append(f"{float(baseline.get('diagnosis_composite_score')):g}分")
+        elif item.get("severity_score") is not None:
+            parts.append(f"{float(item['severity_score']):g}分")
+        root_cause_brief = self._build_ai_root_cause_brief(item)
+        issue_count = len([part for part in re.split(r"[；;]", str(root_cause_brief)) if str(part).strip()])
+        if issue_count:
+            parts.append(f"{issue_count}类")
+        return "｜".join(parts) if parts else str(item.get("priority_reason") or item.get("priority_rule") or "待补充")
+
+    def _build_ai_root_cause_brief(self, item: dict[str, Any]) -> str:
+        raw = str(item.get("root_cause_multiline") or item.get("root_cause") or "").strip()
+        if not raw:
+            return "待补充"
+        parts = [part.strip() for part in re.split(r"(?:<br>|；|;)", raw) if part.strip()]
+        simplified: list[str] = []
+        for part in parts:
+            clean = re.sub(r"^\d+\.\s*", "", part)
+            clean = re.sub(r"<[^>]+>", "", clean).strip()
+            overstock_match = re.search(r"(.+?)期末库存.*?超储(\d+)个", clean)
+            if overstock_match:
+                model_text, qty_text = overstock_match.groups()
+                simplified.append(f"{model_text.strip()}超储{int(qty_text):,}个")
+                continue
+            shortage_match = re.search(r"(.+?)期末库存.*?需补(\d+)个", clean)
+            if shortage_match:
+                model_text, qty_text = shortage_match.groups()
+                simplified.append(f"{model_text.strip()}需补{int(qty_text):,}个")
+                continue
+            if "理论使用需求占比" in clean or "实际使用占比" in clean and "大袋小用" not in clean:
+                continue
+            if "大袋小用" in clean:
+                simplified.append("大袋小用偏高")
+                continue
+            if "小袋多用订单占比" in clean:
+                match = re.search(r"小袋多用订单占比([^。；<]+)", clean)
+                ratio_text = match.group(1).strip() if match else ""
+                simplified.append(f"小袋多用{ratio_text}".rstrip("。"))
+                continue
+            if "无法支撑门店按推荐方案使用" in clean:
+                size_match = re.search(r"([A-Z]+)码", clean)
+                size_text = size_match.group(1) + "码" if size_match else "目标尺码"
+                simplified.append(f"{size_text}缺口，暂不纠偏")
+                continue
+            if "存在积压风险" in clean:
+                size_match = re.search(r"([A-Z]+)码", clean)
+                size_text = size_match.group(1) + "码" if size_match else "相关尺码"
+                simplified.append(f"{size_text}偏高，先去化")
+                continue
+            if "需在后续订购中补齐" in clean:
+                size_match = re.search(r"([A-Z]+)码", clean)
+                size_text = size_match.group(1) + "码" if size_match else "相关尺码"
+                simplified.append(f"{size_text}偏低，后续补齐")
+                continue
+        deduped: list[str] = []
+        for part in simplified:
+            if part not in deduped:
+                deduped.append(part)
+        return "；".join(deduped[:3]) if deduped else self._dedupe_delimited_text(raw, "待补充")
+
+    def _build_ai_business_plan_brief(self, item: dict[str, Any]) -> str:
+        raw = str(item.get("business_plan") or "").strip()
+        if not raw:
+            return "待补充"
+        lines = [line.strip() for line in raw.split("<br>") if line.strip()]
+        compact: list[str] = []
+        for line in lines:
+            text = re.sub(r"<[^>]+>", "", line).rstrip("。")
+            text = re.sub(r"^紧急补齐(.+?)码库存，目标库存深度≥1个月$", r"补\1码至1个月", text)
+            text = re.sub(r"^暂停或压降(.+?)码订购，优先调拨与消化存量$", r"停\1码去化", text)
+            text = re.sub(r"^复盘(.+?)码替代(.+?)码的场景，按理论配比纠偏，避免大袋小用$", r"纠偏\1替\2", text)
+            text = re.sub(r"^复核合包规则与门店执行，重点减少重复拆分装袋和额外加袋$", "压降拆分装袋", text)
+            text = re.sub(r"^复核合包规则与门店执行，减少偏小尺码拆分装袋$", "压降小码拆袋", text)
+            text = re.sub(r"^\d+\.\s*(.+?)：库存积压.*立即停止订购$", r"\1停订去化", text)
+            text = re.sub(r"^\d+\.\s*(.+?)：库存偏紧.*预留补货(\d+)个$", lambda m: f"{m.group(1)}补货{int(m.group(2)):,}个", text)
+            text = re.sub(r"^\d+\.\s*(.+?)：库存短缺.*尽快补货(\d+)个$", lambda m: f"{m.group(1)}补货{int(m.group(2)):,}个", text)
+            compact.append(text)
+        return "<br>".join(compact[:3]) if compact else "待补充"
+
+    def _build_ai_review_metric_brief(self, item: dict[str, Any]) -> str:
+        text = str(item.get("review_metric_text") or "").strip()
+        match = re.search(r"下月综合得分目标≥\s*([0-9.]+)分（当前([0-9.]+)分）", text)
+        if match:
+            target, current = match.groups()
+            return f"综合分≥{target}（现{current}）"
+        baseline = item.get("baseline", {}) if isinstance(item, dict) else {}
+        bits: list[str] = []
+        if baseline.get("high_inventory_count"):
+            bits.append(f"高库存{int(baseline.get('high_inventory_count') or 0)}")
+        if baseline.get("future_gap_count"):
+            bits.append(f"缺口{int(baseline.get('future_gap_count') or 0)}")
+        if baseline.get("order_anomaly_count"):
+            bits.append(f"异常单{int(baseline.get('order_anomaly_count') or 0)}")
+        if bits:
+            return "｜".join(bits)
+        return text or self._build_ai_review_metric_text(item)
 
     def _build_ai_priority_rule_text(self, item: dict[str, Any]) -> str:
         priority = str(item.get("priority") or "P3")

@@ -58,7 +58,7 @@
 
 {% macro priority_action_card(item) -%}
 {% set badge_tone = 'red' if item.priority == 'P1' else 'yellow' if item.priority == 'P2' else 'neutral' %}
-{% set action_preview = item.business_plan.split('<br>')[0] if item.business_plan else '待补充' %}
+{% set action_preview = item.business_plan_brief.split('<br>')[0] if item.business_plan_brief else '待补充' %}
 <div style="border:1px solid #E2E8F0;border-radius:10px;background:#FFFFFF;padding:14px;display:flex;flex-direction:column;gap:10px;box-shadow:0 1px 2px rgba(15,23,42,0.04);height:100%;min-height:262px;overflow:hidden;">
 <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
 <div>{{ inline_badge(item.group_label if item.group_label else '综合动作', item.group_tone if item.group_tone else 'neutral') }}</div>
@@ -109,10 +109,10 @@
 {%- endmacro %}
 
 {% macro ai_action_table(items, priority_label, priority_tone) -%}
-| 区域 | 问题类型 | 重点型号 | 优先级判定依据 | 关键依据 | 行动清单（型号/动作/数量） | 下月复盘指标 |
+| 区域 | 问题 | 重点型号 | 判定依据 | 关键判断 | 首要动作 | 复盘目标 |
 |---|---|---|---|---|---|---|
 {% for item in items %}
-| {{ strong_value(item.region) }} | {{ item.issue_type_label | emphasize_text | rich_text | safe }} | {{ strong_value(item.focus_models|join('、') if item.focus_models else '非型号问题') }} | {{ inline_badge(priority_label, priority_tone) }}<br>{{ (item.priority_reason if item.priority_reason else item.priority_rule) | emphasize_text | rich_text | safe }} | {{ item.root_cause_multiline | emphasize_text | rich_text | safe if item.root_cause_multiline else '待补充' }} | {{ item.business_plan | emphasize_text | rich_text | safe if item.business_plan else '待补充' }} | {{ item.review_metric_text | emphasize_text | rich_text | safe }} |
+| {{ strong_value(item.region) }} | {{ item.issue_type_brief | emphasize_text | rich_text | safe }} | {{ strong_value(item.focus_models|join('、') if item.focus_models else '非型号问题') }} | {{ inline_badge(priority_label, priority_tone) }}<br>{{ (item.priority_reason_brief if item.priority_reason_brief else item.priority_reason if item.priority_reason else item.priority_rule) | emphasize_text | rich_text | safe }} | {{ item.root_cause_brief | emphasize_text | rich_text | safe if item.root_cause_brief else '待补充' }} | {{ item.business_plan_brief | emphasize_text | rich_text | safe if item.business_plan_brief else '待补充' }} | {{ item.review_metric_brief | emphasize_text | rich_text | safe }} |
 {% endfor %}
 {%- endmacro %}
 
@@ -399,7 +399,7 @@
 
 ---
 
-## 七、AI 重点行动清单（可执行・分级）
+## 七、AI重点行动清单（分级执行）
 
 {{ report_note("AI洞察", "重点问题摘要", ai_display_summary if ai_display_summary else '本期未识别到新增重点洞察。', "warning") }}
 

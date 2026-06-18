@@ -391,7 +391,7 @@ def test_build_priority_action_group_meta_contains_counts_and_display_hint(tmp_p
         empty_message="本期暂无纸袋使用合规类重点动作。",
     )
 
-    assert group["count_label"] == "3项重点动作"
+    assert group["count_label"] == "3项动作"
     assert group["priority_mix"] == "P1 2项 / P2 1项"
     assert group["display_hint"] == "当前仅展示前2项，完整清单见第七部分。"
     assert group["issue_snapshot"] == "大袋小用、库存健康问题"
@@ -412,7 +412,7 @@ def test_build_priority_action_group_meta_uses_empty_count_label_when_no_items(t
         empty_message="本期暂无终端异常 / 盘点类重点动作。",
     )
 
-    assert group["count_label"] == "暂无重点动作"
+    assert group["count_label"] == "暂无动作"
     assert group["priority_mix"] == "本期无重点动作"
 
 
@@ -462,18 +462,19 @@ def test_project_report_template_uses_ai_monthly_regional_ratio_source_name() ->
     assert "小袋多用归因读取本地 SQL 导出 CSV" in template_text
     assert "usage_findings = detail.usage_diagnosis.findings" in template_text
     assert "额外成本合计" in template_text
-    assert "## 七、AI 重点行动清单（可执行・分级）" in template_text
+    assert "## 七、AI重点行动清单（分级执行）" in template_text
     assert "库存与趋势判断" in template_text
     assert "本月优先执行事项" in template_text
     assert "执行区域" in template_text
     assert "首要动作" in template_text
+    assert "| 区域 | 问题 | 重点型号 | 判定依据 | 关键判断 | 首要动作 | 复盘目标 |" in template_text
     assert "action_group_header(group)" in template_text
     assert "summary_card(group.label, group.count_label" in template_text
     assert "### P1 重点动作" in template_text
     assert "### P2 常规动作" in template_text
     assert "group.display_hint" in template_text
     assert "本月聚焦：" in template_text
-    assert "下月复盘指标" in template_text
+    assert "复盘目标" in template_text
     assert "图表1-2：历史订购拼接后数据明细" not in template_text
     assert "## 一、纸袋库销诊断" not in template_text
     assert "## 二、销账异常" not in template_text
@@ -488,6 +489,34 @@ def test_project_report_template_uses_ai_monthly_regional_ratio_source_name() ->
     assert "P1/P2判定口径" in template_text
     assert "1. 结构相对均衡" not in template_text
     assert "1. 集中待跟踪" in template_text
+
+
+def test_report_service_builds_brief_ai_action_fields(tmp_path: Path) -> None:
+    template_path = tmp_path / "report_template.md.j2"
+    template_path.write_text("# {{ title }}\n", encoding="utf-8")
+    service = ReportService(template_path, DummyLogger())
+
+    item = {
+        "issue_type_label": "大袋小用 + 未合并装袋（小袋多用） + 库存无法支持合理使用 + 库存结构不科学",
+        "root_cause_multiline": (
+            "S码门店实际使用占比低于理论占比，M码实际使用占比偏高，地区尺码订购与终端需求不匹配，存在大袋小用并带来额外费用。<br>"
+            "小袋多用订单占比34.8%。<br>"
+            "S码库存深度仅0.09月，库存偏差-36.9个百分点，无法支撑门店按推荐方案使用。<br>"
+            "M码库存深度14.21月，库存偏差+39.1个百分点，存在积压风险。"
+        ),
+        "business_plan": (
+            "紧急补齐S码库存，目标库存深度≥1个月。<br>"
+            "暂停或压降M码订购，优先调拨与消化存量。<br>"
+            "复盘M码替代S、L、XL码的场景，按理论配比纠偏，避免大袋小用。"
+        ),
+        "review_metric_text": "下月综合得分目标≥70分（当前49.45分）",
+        "baseline": {"diagnosis_composite_score": 49.45},
+    }
+
+    assert service._build_ai_issue_type_brief(item["issue_type_label"]) == "使用失衡 + 库存受限"
+    assert service._build_ai_root_cause_brief(item) == "大袋小用偏高；小袋多用34.8%；S码缺口，暂不纠偏"
+    assert service._build_ai_business_plan_brief(item) == "补S码至1个月<br>停M码去化<br>纠偏M替S、L、XL"
+    assert service._build_ai_review_metric_brief(item) == "综合分≥70（现49.45）"
 
 
 def test_followup_document_uses_quantified_action_list_header(tmp_path: Path) -> None:
